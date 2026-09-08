@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Privacy Vision Agent</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      width: 400px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: #fff;
+      padding: 20px;
+      min-height: 100vh;
+    }
+
+    .container {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .header {
+      text-align: center;
+    }
+
+    .header h1 {
+      font-size: 20px;
+      margin-bottom: 8px;
+    }
+
+    .status {
+      display: inline-block;
+      padding: 4px 12px;
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .status.ready {
+      background: rgba(76, 175, 80, 0.3);
+      color: #c8e6c9;
+    }
+
+    .card {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      padding: 16px;
+      backdrop-filter: blur(10px);
+    }
+
+    .card h2 {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      opacity: 0.9;
+    }
+
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 13px;
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .info-row:last-child {
+      border-bottom: none;
+    }
+
+    .info-row label {
+      opacity: 0.8;
+      font-weight: 500;
+    }
+
+    .info-row value {
+      font-weight: 600;
+      text-align: right;
+      flex: 1;
+      margin-left: 12px;
+    }
+
+    .buttons {
+      display: flex;
+      gap: 10px;
+      flex-direction: column;
+    }
+
+    button {
+      padding: 10px 16px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .btn-primary {
+      background: rgba(255, 255, 255, 0.3);
+      color: #fff;
+    }
+
+    .btn-primary:hover {
+      background: rgba(255, 255, 255, 0.4);
+    }
+
+    .btn-primary:active {
+      transform: scale(0.98);
+    }
+
+    .loading {
+      display: inline-block;
+      width: 4px;
+      height: 4px;
+      background: currentColor;
+      border-radius: 50%;
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% {
+        opacity: 1;
+      }
+      50% {
+        opacity: 0.5;
+      }
+    }
+
+    .error {
+      color: #ffcdd2;
+      font-size: 12px;
+      margin-top: 8px;
+      display: none;
+    }
+
+    .error.show {
+      display: block;
+    }
+
+    .success {
+      color: #c8e6c9;
+      font-size: 12px;
+      margin-top: 8px;
+      display: none;
+    }
+
+    .success.show {
+      display: block;
+    }
+
+    .url-display {
+      font-size: 11px;
+      opacity: 0.7;
+      word-break: break-all;
+      margin-top: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Privacy Vision Agent</h1>
+      <div class="status ready" id="status">Status: Ready</div>
+    </div>
+
+    <div class="card">
+      <h2>Current Page</h2>
+      <div class="info-row">
+        <label>Title:</label>
+        <value id="pageTitle">—</value>
+      </div>
+      <div class="url-display" id="pageUrl"></div>
+    </div>
+
+    <div class="card">
+      <h2>DOM Analysis</h2>
+      <div class="info-row">
+        <label>Buttons:</label>
+        <value id="buttonCount">—</value>
+      </div>
+      <div class="info-row">
+        <label>Inputs:</label>
+        <value id="inputCount">—</value>
+      </div>
+      <div class="info-row">
+        <label>Links:</label>
+        <value id="linkCount">—</value>
+      </div>
+      <div class="info-row">
+        <label>Other Elements:</label>
+        <value id="otherCount">—</value>
+      </div>
+      <div class="info-row">
+        <label>Last Scanned:</label>
+        <value id="lastScan">Never</value>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Screenshot</h2>
+      <div class="info-row">
+        <label>Status:</label>
+        <value id="screenshotStatus">Not captured</value>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Backend Connection</h2>
+      <div class="info-row">
+        <label>Status:</label>
+        <value id="backendStatus">Connecting...</value>
+      </div>
+      <div class="info-row">
+        <label>Session ID:</label>
+        <value id="sessionId">—</value>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Local Processing</h2>
+      <div class="info-row">
+        <label>Status:</label>
+        <value>Active (on-device only)</value>
+      </div>
+    </div>
+
+    <div class="buttons">
+      <button class="btn-primary" id="scanBtn">Scan DOM</button>
+      <button class="btn-primary" id="screenshotBtn">Capture Screenshot</button>
+      <button class="btn-primary" id="resetBtn">Reset</button>
+    </div>
+
+    <div class="error" id="error"></div>
+    <div class="success" id="success"></div>
+  </div>
+
+  <script type="module" src="./popup.ts"></script>
+</body>
+</html>
