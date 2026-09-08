@@ -1,0 +1,32 @@
+{
+  "name": "privacy-vision-agent-extension",
+  "version": "0.1.0",
+  "description": "On-device visual perception for privacy-preserving browser agents",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build && npm run build:post",
+    "build:post": "node build-scripts/post-build.js",
+    "type-check": "tsc --noEmit",
+    "lint": "eslint src --ext .ts,.tsx",
+    "test": "vitest",
+    "test:ui": "vitest --ui"
+  },
+  "dependencies": {
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.251",
+    "@types/node": "^20.10.5",
+    "@types/uuid": "^10.0.0",
+    "@typescript-eslint/eslint-plugin": "^6.16.0",
+    "@typescript-eslint/parser": "^6.16.0",
+    "@vitest/ui": "^1.0.4",
+    "eslint": "^8.56.0",
+    "jsdom": "^23.2.0",
+    "terser": "^5.51.2",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.8",
+    "vitest": "^1.0.4"
+  }
+}
