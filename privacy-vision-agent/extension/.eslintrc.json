@@ -1,0 +1,18 @@
+{
+  "env": {
+    "browser": true,
+    "es2020": true,
+    "webextensions": true
+  },
+  "extends": [
+    "eslint:recommended",
+    "plugin:@typescript-eslint/recommended"
+  ],
+  "parser": "@typescript-eslint/parser",
+  "plugins": ["@typescript-eslint"],
+  "rules": {
+    "@typescript-eslint/no-unused-vars": ["error", { "argsIgnorePattern": "^_" }],
+    "no-console": ["warn", { "allow": ["log", "warn", "error"] }],
+    "prefer-const": "error"
+  }
+}
