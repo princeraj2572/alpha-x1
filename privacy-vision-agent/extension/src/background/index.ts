@@ -4,7 +4,7 @@
  */
 
 import { AgentStatus } from '@/types/index';
-import { wsClient } from '@/communication/websocket-client';
+import { wsClient, Message } from '@/communication/websocket-client';
 
 console.log('[Privacy Vision Agent] Background service worker loaded');
 
@@ -51,6 +51,58 @@ wsClient.onMessage('heartbeat', (msg) => {
   const sequence = (msg.payload as Record<string, unknown>).sequence as number || 0;
   wsClient.sendHeartbeatAck(sequence).catch(console.error);
 });
+
+wsClient.onMessage('action', (msg: Message) => {
+  handleBackendAction(msg).catch(console.error);
+});
+
+/**
+ * Handle action from backend
+ */
+async function handleBackendAction(msg: Message): Promise<void> {
+  try {
+    console.log('[Privacy Vision Agent] Action received from backend:', msg.payload.action);
+
+    const tab = await getActiveTab();
+    if (!tab || !tab.id) {
+      console.error('[Privacy Vision Agent] No active tab found');
+      return;
+    }
+
+    // Send action to content script for execution
+    let result;
+    try {
+      result = await chrome.tabs.sendMessage(tab.id, {
+        action: 'executeAction',
+        payload: msg.payload,
+      });
+      console.log('[Privacy Vision Agent] Action executed, result:', result);
+    } catch (tabError) {
+      console.error('[Privacy Vision Agent] Failed to send message to tab:', tabError);
+      throw new Error(`Failed to execute action on tab: ${tabError}`);
+    }
+
+    // Send result back to backend
+    console.log('[Privacy Vision Agent] Sending action_result to backend');
+    await wsClient.send('action_result', {
+      message_id: msg.message_id,
+      success: result?.success ?? true,
+      execution_time_ms: result?.execution_time_ms ?? 0,
+      error: result?.error,
+      details: result?.details,
+    });
+    console.log('[Privacy Vision Agent] action_result sent');
+  } catch (error) {
+    console.error('[Privacy Vision Agent] Action handling failed:', error);
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    await wsClient.send('action_result', {
+      success: false,
+      error: errorMsg,
+    }).catch((err) => {
+      console.error('[Privacy Vision Agent] Failed to send error result:', err);
+    });
+  }
+}
 
 // Initialize on background load
 initializeBackend();
