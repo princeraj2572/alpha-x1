@@ -15,9 +15,15 @@ class ReasoningService:
 
     def __init__(self, provider: Optional[BaseProvider] = None):
         """Initialize reasoning service"""
-        self.provider = provider or ClaudeProvider()
+        self.provider = provider
         self.request_count = 0
         self.error_count = 0
+
+    def _get_provider(self) -> BaseProvider:
+        """Lazy-load provider on first use"""
+        if self.provider is None:
+            self.provider = ClaudeProvider()
+        return self.provider
 
     async def reason_about_action(
         self,
@@ -28,9 +34,10 @@ class ReasoningService:
         """Get next action from cloud model"""
         try:
             self.request_count += 1
+            provider = self._get_provider()
 
             logger.info(
-                f"[Reasoning Service] Request #{self.request_count} to {self.provider.name}"
+                f"[Reasoning Service] Request #{self.request_count} to {provider.name}"
             )
 
             request = ReasoningRequest(
@@ -39,7 +46,7 @@ class ReasoningService:
                 history=history or [],
             )
 
-            action = await self.provider.reason(request)
+            action = await provider.reason(request)
 
             logger.info(f"[Reasoning Service] Action: {action.action_type}")
 
@@ -53,11 +60,12 @@ class ReasoningService:
     async def validate_provider(self) -> bool:
         """Check if provider is available"""
         try:
-            is_valid = await self.provider.validate_connection()
+            provider = self._get_provider()
+            is_valid = await provider.validate_connection()
             if is_valid:
-                logger.info(f"[Reasoning Service] Provider {self.provider.name} is available")
+                logger.info(f"[Reasoning Service] Provider {provider.name} is available")
             else:
-                logger.warning(f"[Reasoning Service] Provider {self.provider.name} is not available")
+                logger.warning(f"[Reasoning Service] Provider {provider.name} is not available")
             return is_valid
         except Exception as e:
             logger.error(f"[Reasoning Service] Provider validation failed: {e}")
@@ -65,8 +73,9 @@ class ReasoningService:
 
     def get_stats(self) -> dict:
         """Get reasoning service statistics"""
+        provider_name = self._get_provider().name if self.provider else "not-initialized"
         return {
-            "provider": self.provider.name,
+            "provider": provider_name,
             "requests": self.request_count,
             "errors": self.error_count,
             "error_rate": (
