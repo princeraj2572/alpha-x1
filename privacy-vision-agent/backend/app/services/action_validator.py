@@ -4,7 +4,6 @@ Action validation and policy enforcement
 
 import logging
 from typing import Optional
-from ..schemas.actions import ActionType
 
 logger = logging.getLogger(__name__)
 
@@ -12,7 +11,7 @@ logger = logging.getLogger(__name__)
 class ActionValidator:
     """Validates actions before sending to extension"""
 
-    RISKY_ACTIONS = {ActionType.NAVIGATE}
+    RISKY_ACTIONS = {"navigate"}
     ALLOWED_URL_SCHEMES = {"http", "https"}
 
     def __init__(self):
