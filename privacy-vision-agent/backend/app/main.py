@@ -30,16 +30,10 @@ async def lifespan(app: FastAPI):
     """Lifespan context manager for startup/shutdown"""
     logger.info("Starting Privacy Vision Agent Backend")
 
-    # Initialize reasoning service
+    # Initialize reasoning service (provider is lazy-loaded)
     reasoning_service = ReasoningService()
     app.state.reasoning = reasoning_service
-
-    # Validate provider connection
-    provider_valid = await reasoning_service.validate_provider()
-    if provider_valid:
-        logger.info("Cloud reasoning provider is ready")
-    else:
-        logger.warning("Cloud reasoning provider validation failed")
+    logger.info("Reasoning service initialized (provider lazy-loads on first use)")
 
     yield
 
