@@ -12,8 +12,10 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+import os
 
-from .api import health, websocket_handler
+from .api import health, websocket_handler, reasoning
+from .services.reasoning import ReasoningService
 
 # Configure logging
 logging.basicConfig(
@@ -27,7 +29,20 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """Lifespan context manager for startup/shutdown"""
     logger.info("Starting Privacy Vision Agent Backend")
+
+    # Initialize reasoning service
+    reasoning_service = ReasoningService()
+    app.state.reasoning = reasoning_service
+
+    # Validate provider connection
+    provider_valid = await reasoning_service.validate_provider()
+    if provider_valid:
+        logger.info("Cloud reasoning provider is ready")
+    else:
+        logger.warning("Cloud reasoning provider validation failed")
+
     yield
+
     logger.info("Shutting down Privacy Vision Agent Backend")
 
 
@@ -51,6 +66,7 @@ app.add_middleware(
 # Include routers
 app.include_router(health.router)
 app.include_router(websocket_handler.router)
+app.include_router(reasoning.router)
 
 
 @app.get("/")
