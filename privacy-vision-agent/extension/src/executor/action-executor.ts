@@ -1,185 +1,248 @@
 /**
- * Action execution engine
- * Handles browser automation actions: click, type, scroll, select, navigate, wait, finish
+ * Action Executor - Performs browser actions
+ * Handles: click, type, scroll, select, navigate, wait, finish
  */
 
+export type ActionType = 'click' | 'type' | 'scroll' | 'select' | 'navigate' | 'wait' | 'finish';
+
 export interface ActionPayload {
-  action: string;
+  action: ActionType;
   target_id?: string;
-  value?: string;
-  value_ref?: string;
-  direction?: string;
-  amount?: number;
-  option?: string;
-  url?: string;
+  value?: string | number | boolean;
   duration_ms?: number;
-  success?: boolean;
-  message?: string;
-  confidence?: number;
-  reason?: string;
+  // For scroll: direction, amount
+  direction?: 'up' | 'down' | 'left' | 'right';
+  amount?: number;
+  // For navigate: url
+  url?: string;
 }
 
 export interface ActionResult {
   action_id: string;
-  action_type: string;
+  action_type: ActionType;
   success: boolean;
   error?: string;
   execution_time_ms: number;
-  details?: Record<string, unknown>;
+  state_before?: string;
+  state_after?: string;
 }
 
-class ActionExecutor {
-  private elementMap: Map<string, HTMLElement> = new Map();
-
-  setElementMap(elements: Map<string, HTMLElement>): void {
-    this.elementMap = elements;
-  }
-
+export class ActionExecutor {
+  /**
+   * Execute a browser action
+   */
   async execute(payload: ActionPayload): Promise<ActionResult> {
     const startTime = performance.now();
-    const actionType = payload.action || 'unknown';
+    const actionId = `${payload.action}-${Date.now()}`;
 
     try {
-      switch (actionType) {
+      console.log(`[Action Executor] Executing: ${payload.action} on ${payload.target_id}`);
+
+      let result: any;
+
+      switch (payload.action) {
         case 'click':
-          await this.handleClick(payload);
+          result = await this.handleClick(payload);
           break;
         case 'type':
-          await this.handleType(payload);
+          result = await this.handleType(payload);
           break;
         case 'scroll':
-          await this.handleScroll(payload);
+          result = await this.handleScroll(payload);
           break;
         case 'select':
-          await this.handleSelect(payload);
+          result = await this.handleSelect(payload);
           break;
         case 'navigate':
-          await this.handleNavigate(payload);
+          result = await this.handleNavigate(payload);
           break;
         case 'wait':
-          await this.handleWait(payload);
+          result = await this.handleWait(payload);
           break;
         case 'finish':
-          await this.handleFinish(payload);
+          result = await this.handleFinish(payload);
           break;
         default:
-          throw new Error(`Unknown action type: ${actionType}`);
+          throw new Error(`Unknown action type: ${payload.action}`);
       }
 
+      const executionTime = performance.now() - startTime;
+
       return {
-        action_id: payload.target_id || 'unknown',
-        action_type: actionType,
+        action_id: actionId,
+        action_type: payload.action,
         success: true,
-        execution_time_ms: Math.round(performance.now() - startTime),
-        details: { confidence: payload.confidence },
+        execution_time_ms: Math.round(executionTime),
       };
     } catch (error) {
+      const executionTime = performance.now() - startTime;
+
+      console.error(`[Action Executor] Failed to execute ${payload.action}:`, error);
+
       return {
-        action_id: payload.target_id || 'unknown',
-        action_type: actionType,
+        action_id: actionId,
+        action_type: payload.action,
         success: false,
         error: error instanceof Error ? error.message : String(error),
-        execution_time_ms: Math.round(performance.now() - startTime),
+        execution_time_ms: Math.round(executionTime),
       };
     }
   }
 
+  /**
+   * Handle click action
+   */
   private async handleClick(payload: ActionPayload): Promise<void> {
-    const { target_id } = payload;
-    if (!target_id) throw new Error('Missing target_id for click action');
+    if (!payload.target_id) {
+      throw new Error('target_id required for click action');
+    }
 
-    const element = this.findElement(target_id);
-    if (!element) throw new Error(`Element not found: ${target_id}`);
+    const element = document.getElementById(payload.target_id);
+    if (!element) {
+      throw new Error(`Element not found: ${payload.target_id}`);
+    }
 
-    element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    await this.delay(300);
-    (element as HTMLElement).click();
+    // Ensure element is visible
+    if (!this.isElementVisible(element)) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      await this.delay(300);
+    }
+
+    // Simulate click
+    const clickEvent = new MouseEvent('click', {
+      bubbles: true,
+      cancelable: true,
+      view: window,
+    });
+
+    element.dispatchEvent(clickEvent);
+    console.log(`[Action Executor] Clicked: ${payload.target_id}`);
   }
 
+  /**
+   * Handle type action
+   */
   private async handleType(payload: ActionPayload): Promise<void> {
-    const { target_id, value } = payload;
-    if (!target_id) throw new Error('Missing target_id for type action');
-    if (!value) throw new Error('Missing value for type action');
+    if (!payload.target_id) {
+      throw new Error('target_id required for type action');
+    }
 
-    const element = this.findElement(target_id) as HTMLInputElement | HTMLTextAreaElement;
-    if (!element) throw new Error(`Element not found: ${target_id}`);
+    if (typeof payload.value !== 'string') {
+      throw new Error('value must be a string for type action');
+    }
 
-    element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    await this.delay(300);
+    const element = document.getElementById(payload.target_id) as HTMLInputElement | HTMLTextAreaElement;
+    if (!element) {
+      throw new Error(`Element not found: ${payload.target_id}`);
+    }
+
+    // Focus and clear
     element.focus();
-    await this.delay(100);
     element.value = '';
-    element.dispatchEvent(new Event('input', { bubbles: true }));
 
-    for (const char of value) {
+    // Type characters one at a time
+    for (const char of payload.value) {
       element.value += char;
       element.dispatchEvent(new Event('input', { bubbles: true }));
-      await this.delay(20);
+      element.dispatchEvent(new Event('change', { bubbles: true }));
+      await this.delay(50); // Simulate typing speed
     }
-    element.dispatchEvent(new Event('change', { bubbles: true }));
+
+    console.log(`[Action Executor] Typed ${payload.value.length} characters into ${payload.target_id}`);
   }
 
+  /**
+   * Handle scroll action
+   */
   private async handleScroll(payload: ActionPayload): Promise<void> {
-    const { direction = 'down', amount = 300 } = payload;
+    const direction = payload.direction || 'down';
+    const amount = payload.amount || 3;
 
-    const scrollMap: Record<string, [number, number]> = {
-      up: [0, -amount],
-      down: [0, amount],
-      left: [-amount, 0],
-      right: [amount, 0],
-    };
+    const scrollAmount = amount * 100;
 
-    const [x, y] = scrollMap[direction] || scrollMap.down;
-    window.scrollBy({ left: x, top: y, behavior: 'smooth' });
-    await this.delay(500);
-  }
-
-  private async handleSelect(payload: ActionPayload): Promise<void> {
-    const { target_id, option } = payload;
-    if (!target_id) throw new Error('Missing target_id for select action');
-    if (!option) throw new Error('Missing option for select action');
-
-    const element = this.findElement(target_id) as HTMLSelectElement;
-    if (!element) throw new Error(`Element not found: ${target_id}`);
-
-    element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    await this.delay(300);
-    element.value = option;
-    element.dispatchEvent(new Event('change', { bubbles: true }));
-  }
-
-  private async handleNavigate(payload: ActionPayload): Promise<void> {
-    const { url } = payload;
-    if (!url) throw new Error('Missing url for navigate action');
-
-    try {
-      const urlObj = new URL(url);
-      if (!['http:', 'https:'].includes(urlObj.protocol)) {
-        throw new Error(`Invalid protocol: ${urlObj.protocol}`);
-      }
-    } catch (error) {
-      throw new Error(`Invalid URL: ${url}`);
+    if (direction === 'down') {
+      window.scrollBy(0, scrollAmount);
+    } else if (direction === 'up') {
+      window.scrollBy(0, -scrollAmount);
+    } else if (direction === 'left') {
+      window.scrollBy(-scrollAmount, 0);
+    } else if (direction === 'right') {
+      window.scrollBy(scrollAmount, 0);
     }
 
-    window.location.href = url;
-    await this.delay(1000);
+    await this.delay(300);
+    console.log(`[Action Executor] Scrolled ${direction} by ${amount} units`);
   }
 
+  /**
+   * Handle select action
+   */
+  private async handleSelect(payload: ActionPayload): Promise<void> {
+    if (!payload.target_id) {
+      throw new Error('target_id required for select action');
+    }
+
+    const selectElement = document.getElementById(payload.target_id) as HTMLSelectElement;
+    if (!selectElement || selectElement.tagName !== 'SELECT') {
+      throw new Error(`Select element not found: ${payload.target_id}`);
+    }
+
+    const optionValue = String(payload.value);
+    const option = selectElement.querySelector(`option[value="${optionValue}"]`);
+
+    if (!option) {
+      throw new Error(`Option not found: ${optionValue}`);
+    }
+
+    selectElement.value = optionValue;
+    selectElement.dispatchEvent(new Event('change', { bubbles: true }));
+
+    console.log(`[Action Executor] Selected: ${optionValue} in ${payload.target_id}`);
+  }
+
+  /**
+   * Handle navigate action
+   */
+  private async handleNavigate(payload: ActionPayload): Promise<void> {
+    if (!payload.url) {
+      throw new Error('url required for navigate action');
+    }
+
+    console.log(`[Action Executor] Navigating to: ${payload.url}`);
+    window.location.href = payload.url;
+
+    // Wait for navigation
+    await this.delay(2000);
+  }
+
+  /**
+   * Handle wait action
+   */
   private async handleWait(payload: ActionPayload): Promise<void> {
-    const { duration_ms = 1000 } = payload;
-    const clampedDuration = Math.min(Math.max(duration_ms, 100), 10000);
-    await this.delay(clampedDuration);
+    const duration = payload.duration_ms || 1000;
+    console.log(`[Action Executor] Waiting ${duration}ms`);
+    await this.delay(duration);
   }
 
+  /**
+   * Handle finish action
+   */
   private async handleFinish(payload: ActionPayload): Promise<void> {
-    const { success = true, message } = payload;
-    console.log(`Task ${success ? 'completed' : 'failed'}: ${message || ''}`);
+    console.log(`[Action Executor] Task finished`);
+    // Task is complete - no further actions needed
   }
 
-  private findElement(targetId: string): HTMLElement | null {
-    return this.elementMap.get(targetId) || document.getElementById(targetId);
+  /**
+   * Check if element is visible in viewport
+   */
+  private isElementVisible(element: Element): boolean {
+    const rect = element.getBoundingClientRect();
+    return rect.top >= 0 && rect.left >= 0 && rect.bottom <= window.innerHeight && rect.right <= window.innerWidth;
   }
 
+  /**
+   * Delay helper
+   */
   private delay(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
