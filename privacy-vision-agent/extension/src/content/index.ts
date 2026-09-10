@@ -8,6 +8,7 @@ import { actionExecutor, ActionPayload } from '@/executor/action-executor';
 import { visionEngine } from '@/vision/vision-engine';
 import { privacyFusionEngine } from '@/vision/fusion';
 import { visualPrivacyEngine } from '@/vision/privacy';
+import { agentLoop, AgentLoopConfig } from '@/agent/loop';
 
 console.log('[Privacy Vision Agent] Content script loaded');
 
@@ -34,6 +35,9 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
     return true; // Keep channel open for async response
   } else if (request.action === 'executeAction') {
     handleExecuteAction(request.payload, sendResponse);
+    return true; // Keep channel open for async response
+  } else if (request.action === 'startAgentLoop') {
+    handleAgentLoop(request.config, sendResponse);
     return true; // Keep channel open for async response
   }
 });
@@ -153,3 +157,30 @@ window.addEventListener('beforeunload', () => {
     clearTimeout(mutationTimeout);
   }
 });
+
+/**
+ * Handle agent loop startup
+ */
+async function handleAgentLoop(config: AgentLoopConfig, sendResponse: (response: unknown) => void): Promise<void> {
+  try {
+    console.log('[Privacy Vision Agent] Starting agent loop');
+
+    const loop = new agentLoop.constructor(config);
+    const iterations = await (loop as any).run();
+
+    sendResponse({
+      success: true,
+      data: {
+        iterationCount: iterations.length,
+        stats: (loop as any).getStats(),
+        iterations: iterations,
+      },
+    });
+  } catch (error) {
+    console.error('[Privacy Vision Agent] Agent loop error:', error);
+    sendResponse({
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
