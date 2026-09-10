@@ -7,6 +7,7 @@ import { scanDOM } from '@/scanner/dom-scanner';
 import { actionExecutor, ActionPayload } from '@/executor/action-executor';
 import { visionEngine } from '@/vision/vision-engine';
 import { privacyFusionEngine } from '@/vision/fusion';
+import { visualPrivacyEngine } from '@/vision/privacy';
 
 console.log('[Privacy Vision Agent] Content script loaded');
 
@@ -27,6 +28,9 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
     }
   } else if (request.action === 'scanWithVision') {
     handleScanWithVision(sendResponse);
+    return true; // Keep channel open for async response
+  } else if (request.action === 'detectVisualPrivacy') {
+    handleDetectVisualPrivacy(sendResponse);
     return true; // Keep channel open for async response
   } else if (request.action === 'executeAction') {
     handleExecuteAction(request.payload, sendResponse);
@@ -61,6 +65,41 @@ async function handleScanWithVision(sendResponse: (response: unknown) => void): 
     sendResponse({ success: true, data: combinedResult });
   } catch (error) {
     console.error('[Privacy Vision Agent] Scan with vision error:', error);
+    sendResponse({ success: false, error: String(error) });
+  }
+}
+
+async function handleDetectVisualPrivacy(sendResponse: (response: unknown) => void): Promise<void> {
+  try {
+    console.log('[Privacy Vision Agent] Starting visual privacy detection');
+
+    // Detect faces
+    const faces = await visualPrivacyEngine.detectFaces();
+
+    // Extract text
+    const textRegions = await visualPrivacyEngine.extractText();
+
+    // Create redaction mask
+    const redactionMask = await visualPrivacyEngine.createRedactionMask(faces, textRegions);
+
+    const privacyResult = {
+      faces,
+      textRegions,
+      redactionMask,
+      timestamp: Date.now(),
+      stats: {
+        facesDetected: faces.length,
+        textRegionsFound: textRegions.length,
+        sensitiveTextRegions: textRegions.filter((tr) => tr.isSensitive).length,
+      },
+    };
+
+    console.log(
+      `[Privacy Vision Agent] Visual privacy detection complete: ${faces.length} faces, ${textRegions.length} text regions`
+    );
+    sendResponse({ success: true, data: privacyResult });
+  } catch (error) {
+    console.error('[Privacy Vision Agent] Visual privacy detection error:', error);
     sendResponse({ success: false, error: String(error) });
   }
 }
