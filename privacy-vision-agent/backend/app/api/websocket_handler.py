@@ -4,7 +4,7 @@ WebSocket endpoint for extension communication
 
 import json
 import asyncio
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query, Request
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 from datetime import datetime
 from uuid import uuid4
 import logging
@@ -85,11 +85,11 @@ async def handle_context_message(
     websocket: WebSocket,
     session_id: str,
     incoming: MessageEnvelope,
-    request: Request
+    app
 ) -> None:
     """Handle DOM context message and request reasoning from cloud model"""
     try:
-        reasoning_service = request.app.state.reasoning
+        reasoning_service = app.state.reasoning
         payload = incoming.payload
 
         logger.info(f"[Context Handler] Received context from {session_id}")
@@ -142,7 +142,6 @@ async def handle_context_message(
 @router.websocket("/ws")
 async def websocket_endpoint(
     websocket: WebSocket,
-    request: Request,
     client_id: str = Query(None)
 ):
     """
@@ -157,6 +156,9 @@ async def websocket_endpoint(
     try:
         await websocket.accept()
         logger.info(f"WebSocket connection accepted from {websocket.client}")
+
+        # Get app from scope
+        app = websocket.scope["app"]
 
         # Create session
         session_id = session_manager.create_session()
@@ -230,7 +232,7 @@ async def websocket_endpoint(
                 if incoming.type == "context":
                     # Process DOM context for reasoning
                     await handle_context_message(
-                        websocket, session_id, incoming, request
+                        websocket, session_id, incoming, app
                     )
                 else:
                     # Echo back for acknowledgment
