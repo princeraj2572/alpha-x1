@@ -3,9 +3,11 @@ Reasoning service that coordinates with cloud providers
 """
 
 import logging
+import os
 from typing import Optional
 
 from ..providers import BaseProvider, ReasoningRequest, ActionResponse, ClaudeProvider
+from ..providers.openai import OpenAIProvider
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +24,24 @@ class ReasoningService:
     def _get_provider(self) -> BaseProvider:
         """Lazy-load provider on first use"""
         if self.provider is None:
-            self.provider = ClaudeProvider()
+            provider_name = os.getenv("AI_PROVIDER", "anthropic").lower()
+
+            if provider_name == "openai":
+                api_key = os.getenv("OPENAI_API_KEY")
+                if not api_key:
+                    raise ValueError("OPENAI_API_KEY environment variable not set")
+                model = os.getenv("OPENAI_MODEL", "gpt-4-turbo-preview")
+                self.provider = OpenAIProvider(api_key=api_key, model=model)
+                logger.info("[Reasoning Service] Using OpenAI provider")
+            else:
+                # Default to Claude
+                api_key = os.getenv("ANTHROPIC_API_KEY")
+                if api_key:
+                    self.provider = ClaudeProvider(api_key=api_key)
+                else:
+                    self.provider = ClaudeProvider()
+                logger.info("[Reasoning Service] Using Claude provider")
+
         return self.provider
 
     async def reason_about_action(
