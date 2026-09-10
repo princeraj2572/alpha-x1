@@ -6,6 +6,7 @@ import {
   InputMetadata,
   PageInfo,
 } from '@/types/index';
+import { privacyDetector } from '@/privacy/detector';
 
 /**
  * Generates a unique ID for an element
@@ -222,7 +223,10 @@ export function scanDOM(): DOMScanResult {
       ariaLabel: node.getAttribute('aria-label') || undefined,
     };
 
-    elements.push(element);
+    // Apply privacy redaction
+    const redacted = privacyDetector.redactElement(element as Record<string, unknown>) as ExtractedElement;
+
+    elements.push(redacted);
   }
 
   return {
