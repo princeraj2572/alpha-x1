@@ -17,6 +17,7 @@ const lastScan = document.getElementById('lastScan')!;
 const screenshotStatus = document.getElementById('screenshotStatus')!;
 const scanBtn = document.getElementById('scanBtn')! as HTMLButtonElement;
 const screenshotBtn = document.getElementById('screenshotBtn')! as HTMLButtonElement;
+const reasonBtn = document.getElementById('reasonBtn')! as HTMLButtonElement;
 const resetBtn = document.getElementById('resetBtn')! as HTMLButtonElement;
 const errorEl = document.getElementById('error')!;
 const successEl = document.getElementById('success')!;
@@ -177,9 +178,35 @@ function handleReset(): void {
   showSuccess('Reset complete');
 }
 
+async function handleReason(): Promise<void> {
+  reasonBtn.disabled = true;
+  reasonBtn.textContent = '🤖 Thinking...';
+
+  try {
+    // Send message to background to trigger reasoning
+    const response = await chrome.runtime.sendMessage({
+      action: 'sendContextForReasoning',
+      task: 'Analyze page and suggest next action',
+    });
+
+    if (response?.success) {
+      showSuccess('Context sent to agent - waiting for response');
+    } else {
+      showError('Failed to send context to agent');
+    }
+  } catch (error) {
+    console.error('Reason error:', error);
+    showError('Error contacting agent');
+  } finally {
+    reasonBtn.disabled = false;
+    reasonBtn.textContent = '🤖 Ask Agent';
+  }
+}
+
 // Event listeners
 scanBtn.addEventListener('click', handleScan);
 screenshotBtn.addEventListener('click', handleScreenshot);
+reasonBtn.addEventListener('click', handleReason);
 resetBtn.addEventListener('click', handleReset);
 
 // Update backend status

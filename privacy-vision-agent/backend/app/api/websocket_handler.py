@@ -4,7 +4,7 @@ WebSocket endpoint for extension communication
 
 import json
 import asyncio
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query, Request
 from datetime import datetime
 from uuid import uuid4
 import logging
@@ -81,8 +81,70 @@ async def broadcast_heartbeat() -> None:
                 logger.error(f"Heartbeat error for {session_id}: {e}")
 
 
+async def handle_context_message(
+    websocket: WebSocket,
+    session_id: str,
+    incoming: MessageEnvelope,
+    request: Request
+) -> None:
+    """Handle DOM context message and request reasoning from cloud model"""
+    try:
+        reasoning_service = request.app.state.reasoning
+        payload = incoming.payload
+
+        logger.info(f"[Context Handler] Received context from {session_id}")
+
+        # Call reasoning service to get next action
+        action = await reasoning_service.reason_about_action(
+            context=payload.get("context", {}),
+            task=payload.get("task"),
+            history=payload.get("history", []),
+        )
+
+        # Send action back to extension
+        action_message = MessageEnvelope(
+            session_id=session_id,
+            message_id=str(uuid4()),
+            type="action",
+            timestamp=datetime.utcnow(),
+            payload={
+                "action_type": action.action_type,
+                "target_id": action.target_id,
+                "value": action.value,
+                "option": action.option,
+                "direction": action.direction,
+                "amount": action.amount,
+                "duration_ms": action.duration_ms,
+                "url": action.url,
+                "confidence": action.confidence,
+                "reason": action.reason,
+            },
+        )
+
+        await send_message(websocket, action_message)
+        logger.info(f"[Context Handler] Sent action to extension: {action.action_type}")
+
+    except Exception as e:
+        logger.error(f"[Context Handler] Error: {e}")
+        error_msg = MessageEnvelope(
+            session_id=session_id,
+            message_id=str(uuid4()),
+            type="error",
+            timestamp=datetime.utcnow(),
+            payload={
+                "error_code": "REASONING_FAILED",
+                "message": str(e),
+            },
+        )
+        await send_message(websocket, error_msg)
+
+
 @router.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket, client_id: str = Query(None)):
+async def websocket_endpoint(
+    websocket: WebSocket,
+    request: Request,
+    client_id: str = Query(None)
+):
     """
     WebSocket endpoint for extension connections
 
@@ -164,19 +226,26 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str = Query(None))
                 session_manager.record_message(session_id)
                 logger.debug(f"Message from {session_id}: {incoming.type}")
 
-                # Echo back for now (Milestone 2: just connectivity)
-                echo = MessageEnvelope(
-                    session_id=session_id,
-                    message_id=str(uuid4()),
-                    type="heartbeat",
-                    timestamp=datetime.utcnow(),
-                    payload={
-                        "received_message_id": incoming.message_id,
-                        "received_type": incoming.type,
-                        "server_timestamp": datetime.utcnow().isoformat(),
-                    },
-                )
-                await send_message(websocket, echo)
+                # Handle different message types
+                if incoming.type == "context":
+                    # Process DOM context for reasoning
+                    await handle_context_message(
+                        websocket, session_id, incoming, request
+                    )
+                else:
+                    # Echo back for acknowledgment
+                    echo = MessageEnvelope(
+                        session_id=session_id,
+                        message_id=str(uuid4()),
+                        type="heartbeat",
+                        timestamp=datetime.utcnow(),
+                        payload={
+                            "received_message_id": incoming.message_id,
+                            "received_type": incoming.type,
+                            "server_timestamp": datetime.utcnow().isoformat(),
+                        },
+                    )
+                    await send_message(websocket, echo)
 
             except asyncio.TimeoutError:
                 logger.warning(f"Session {session_id} timeout (no message for 5 min)")
