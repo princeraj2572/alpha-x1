@@ -5,8 +5,15 @@
 
 import { scanDOM } from '@/scanner/dom-scanner';
 import { actionExecutor, ActionPayload } from '@/executor/action-executor';
+import { visionEngine } from '@/vision/vision-engine';
+import { privacyFusionEngine } from '@/vision/fusion';
 
 console.log('[Privacy Vision Agent] Content script loaded');
+
+// Initialize vision engine on page load
+visionEngine.initialize().catch((error) => {
+  console.error('[Privacy Vision Agent] Failed to initialize vision engine:', error);
+});
 
 // Listen for messages from popup or background
 chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
@@ -18,11 +25,45 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
       console.error('DOM scan error:', error);
       sendResponse({ success: false, error: String(error) });
     }
+  } else if (request.action === 'scanWithVision') {
+    handleScanWithVision(sendResponse);
+    return true; // Keep channel open for async response
   } else if (request.action === 'executeAction') {
     handleExecuteAction(request.payload, sendResponse);
     return true; // Keep channel open for async response
   }
 });
+
+async function handleScanWithVision(sendResponse: (response: unknown) => void): Promise<void> {
+  try {
+    console.log('[Privacy Vision Agent] Starting DOM + Vision scan');
+
+    // Scan DOM
+    const domResult = scanDOM();
+
+    // Run visual perception
+    const visualResult = await visionEngine.detectVisualElements();
+
+    // Fuse DOM and visual data
+    const fused = privacyFusionEngine.fuse(domResult.elements, visualResult.elements);
+
+    const combinedResult = {
+      ...domResult,
+      elements: fused,
+      visual: {
+        elements: visualResult.elements,
+        textRegions: visualResult.textRegions,
+        inferenceTime: visualResult.inferenceTime,
+      },
+    };
+
+    console.log('[Privacy Vision Agent] Scan complete: DOM + Vision fused');
+    sendResponse({ success: true, data: combinedResult });
+  } catch (error) {
+    console.error('[Privacy Vision Agent] Scan with vision error:', error);
+    sendResponse({ success: false, error: String(error) });
+  }
+}
 
 async function handleExecuteAction(payload: ActionPayload, sendResponse: (response: unknown) => void): Promise<void> {
   try {
