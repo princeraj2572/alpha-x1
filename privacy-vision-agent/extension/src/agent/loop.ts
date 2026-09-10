@@ -8,6 +8,9 @@ import { visionEngine } from '@/vision/vision-engine';
 import { visualPrivacyEngine } from '@/vision/privacy';
 import { privacyFusionEngine } from '@/vision/fusion';
 import { actionExecutor } from '@/executor/action-executor';
+import { actionPolicyValidator, ActionRiskLevel } from '@/security/action-policy';
+import { killSwitch } from '@/security/kill-switch';
+import { createSafeLogger } from '@/security/safe-logger';
 
 export interface AgentLoopConfig {
   maxIterations?: number;
@@ -47,6 +50,7 @@ export class AgentLoop {
   private iterations: LoopIteration[] = [];
   private previousPageHash: string | null = null;
   private isRunning = false;
+  private logger: ReturnType<typeof createSafeLogger>;
 
   constructor(config: AgentLoopConfig = {}) {
     this.config = {
@@ -55,6 +59,9 @@ export class AgentLoop {
       autoLoop: config.autoLoop ?? false,
       task: config.task ?? 'Complete the task on this page',
     };
+
+    const sessionId = `loop-${Date.now()}`;
+    this.logger = createSafeLogger(sessionId);
   }
 
   /**
@@ -68,15 +75,23 @@ export class AgentLoop {
     this.isRunning = true;
     this.iterations = [];
 
-    console.log(`[Agent Loop] Starting multi-step automation`);
-    console.log(`[Agent Loop] Task: ${this.config.task}`);
-    console.log(`[Agent Loop] Max iterations: ${this.config.maxIterations}`);
+    this.logger.info('AgentLoop', 'Starting multi-step automation', {
+      task: this.config.task,
+      maxIterations: this.config.maxIterations,
+    });
 
     const startTime = Date.now();
 
     for (let i = 0; i < this.config.maxIterations; i++) {
+      // Check kill switch
+      if (killSwitch.isActive()) {
+        this.logger.warn('AgentLoop', 'Kill switch activated, stopping loop');
+        killSwitch.recordIterationStopped();
+        break;
+      }
+
       if (Date.now() - startTime > this.config.timeoutMs) {
-        console.warn(`[Agent Loop] Timeout after ${this.config.timeoutMs}ms`);
+        this.logger.warn('AgentLoop', `Timeout after ${this.config.timeoutMs}ms`);
         break;
       }
 
@@ -86,14 +101,16 @@ export class AgentLoop {
 
         // Check if task is complete
         if (iteration.phase === 'complete') {
-          console.log(`[Agent Loop] Task completed in ${i + 1} iterations`);
+          this.logger.info('AgentLoop', `Task completed in ${i + 1} iterations`);
           break;
         }
 
         // Wait between iterations
         await this.delay(1000);
       } catch (error) {
-        console.error(`[Agent Loop] Error in iteration ${i + 1}:`, error);
+        this.logger.error('AgentLoop', `Error in iteration ${i + 1}`, {
+          error: error instanceof Error ? error.message : String(error),
+        });
         this.iterations.push({
           iteration: i + 1,
           timestamp: Date.now(),
@@ -108,7 +125,7 @@ export class AgentLoop {
     }
 
     this.isRunning = false;
-    console.log(`[Agent Loop] Complete. Ran ${this.iterations.length} iterations`);
+    this.logger.info('AgentLoop', `Complete. Ran ${this.iterations.length} iterations`);
     return this.iterations;
   }
 
@@ -253,20 +270,41 @@ export class AgentLoop {
    * PHASE 4: Validate action
    */
   private validate(action: Awaited<ReturnType<typeof this.reason>>): boolean {
-    // Check action schema
-    const validTypes = ['click', 'type', 'scroll', 'select', 'navigate', 'wait', 'finish'];
-    if (!validTypes.includes(action.action_type)) {
-      console.warn(`  - Invalid action type: ${action.action_type}`);
+    // Validate against security policy
+    const validation = actionPolicyValidator.validate({
+      action: action.action_type as any,
+      target_id: action.target_id,
+      value: action.confidence,
+    });
+
+    if (!validation.valid) {
+      this.logger.warn('AgentLoop', `Action validation failed: ${validation.reason}`);
+      console.warn(`  - ${validation.reason}`);
       return false;
     }
 
     // Check confidence
     if (action.confidence < 0.5) {
+      this.logger.warn('AgentLoop', `Low confidence: ${action.confidence}`);
       console.warn(`  - Low confidence: ${action.confidence}`);
       return false;
     }
 
-    console.log(`  - Action validated: ${action.action_type} (confidence: ${action.confidence})`);
+    const riskLevel = validation.riskLevel;
+    if (validation.requiresConfirmation) {
+      this.logger.info('AgentLoop', `Dangerous action requires confirmation`, {
+        action: action.action_type,
+        riskLevel,
+      });
+    }
+
+    this.logger.info('AgentLoop', `Action validated`, {
+      action: action.action_type,
+      confidence: action.confidence,
+      riskLevel,
+    });
+
+    console.log(`  - Action validated: ${action.action_type} (confidence: ${action.confidence}, risk: ${riskLevel})`);
     return true;
   }
 
