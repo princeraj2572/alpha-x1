@@ -38,29 +38,27 @@ export class ActionExecutor {
     try {
       console.log(`[Action Executor] Executing: ${payload.action} on ${payload.target_id}`);
 
-      let result: any;
-
       switch (payload.action) {
         case 'click':
-          result = await this.handleClick(payload);
+          await this.handleClick(payload);
           break;
         case 'type':
-          result = await this.handleType(payload);
+          await this.handleType(payload);
           break;
         case 'scroll':
-          result = await this.handleScroll(payload);
+          await this.handleScroll(payload);
           break;
         case 'select':
-          result = await this.handleSelect(payload);
+          await this.handleSelect(payload);
           break;
         case 'navigate':
-          result = await this.handleNavigate(payload);
+          await this.handleNavigate(payload);
           break;
         case 'wait':
-          result = await this.handleWait(payload);
+          await this.handleWait(payload);
           break;
         case 'finish':
-          result = await this.handleFinish(payload);
+          await this.handleFinish(payload);
           break;
         default:
           throw new Error(`Unknown action type: ${payload.action}`);
@@ -227,7 +225,7 @@ export class ActionExecutor {
   /**
    * Handle finish action
    */
-  private async handleFinish(payload: ActionPayload): Promise<void> {
+  private async handleFinish(_payload: ActionPayload): Promise<void> {
     console.log(`[Action Executor] Task finished`);
     // Task is complete - no further actions needed
   }

@@ -3,7 +3,7 @@
  * UI for starting/monitoring multi-step automation
  */
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 
 interface IterationResult {
   iteration: number;

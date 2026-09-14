@@ -3,7 +3,7 @@
  * UI for running and viewing evaluation metrics
  */
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 
 interface MetricResult {
   category: string;

@@ -3,8 +3,8 @@
  * Orchestrates evaluation of all SIH metrics
  */
 
-import { privacyEvaluator } from './privacy-evaluator';
-import { visualEvaluator } from './visual-evaluator';
+import { PrivacyEvaluator } from './privacy-evaluator';
+import { VisualEvaluator } from './visual-evaluator';
 import { MetricsCollector } from './metrics-collector';
 
 export interface BenchmarkReport {
@@ -73,7 +73,7 @@ export class BenchmarkRunner {
    */
   private static async evaluatePrivacy() {
     console.log('[Benchmark] Evaluating privacy metrics...');
-    return privacyEvaluator.evaluateSummary();
+    return PrivacyEvaluator.evaluateSummary();
   }
 
   /**
@@ -81,7 +81,7 @@ export class BenchmarkRunner {
    */
   private static async evaluateVisual() {
     console.log('[Benchmark] Evaluating visual accuracy...');
-    return visualEvaluator.evaluateSummary();
+    return VisualEvaluator.evaluateSummary();
   }
 
   /**

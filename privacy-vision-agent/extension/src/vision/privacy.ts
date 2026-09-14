@@ -27,18 +27,8 @@ export interface VisualRedaction {
 }
 
 export class VisualPrivacyEngine {
-  private canvas: OffscreenCanvas | null = null;
   private processingCount = 0;
   private totalProcessingTime = 0;
-
-  constructor() {
-    // Initialize canvas if available
-    try {
-      this.canvas = new OffscreenCanvas(1, 1);
-    } catch (e) {
-      console.warn('[Visual Privacy] OffscreenCanvas not available, using DOM canvas');
-    }
-  }
 
   /**
    * Detect faces in current viewport

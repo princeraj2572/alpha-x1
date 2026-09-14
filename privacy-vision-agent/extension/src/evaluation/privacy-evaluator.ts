@@ -103,7 +103,11 @@ export class PrivacyEvaluator {
     const examples = this.TEST_CASES.filter((tc) => tc.shouldRedact).slice(0, 5);
     const redactionExamples = examples.map((tc) => ({
       input: tc.input,
-      redacted: PrivacyDetector.detectPii(tc.input).redactedValue,
+      // Falls back to the original input (not redacted) when detectPii()
+      // finds nothing to redact — keeps the field a real `string` (matching
+      // its declared type) and makes allRedacted below correctly read as
+      // false for that case instead of silently comparing `undefined`.
+      redacted: PrivacyDetector.detectPii(tc.input).redactedValue ?? tc.input,
     }));
 
     const allRedacted = redactionExamples.every((ex) => ex.redacted !== ex.input);

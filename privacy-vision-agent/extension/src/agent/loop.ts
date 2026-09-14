@@ -7,8 +7,8 @@ import { scanDOM } from '@/scanner/dom-scanner';
 import { visionEngine } from '@/vision/vision-engine';
 import { visualPrivacyEngine } from '@/vision/privacy';
 import { privacyFusionEngine } from '@/vision/fusion';
-import { actionExecutor } from '@/executor/action-executor';
-import { actionPolicyValidator, ActionRiskLevel } from '@/security/action-policy';
+import { actionExecutor, ActionPayload, ActionResult } from '@/executor/action-executor';
+import { ActionPolicyValidator } from '@/security/action-policy';
 import { killSwitch } from '@/security/kill-switch';
 import { createSafeLogger } from '@/security/safe-logger';
 
@@ -222,12 +222,12 @@ export class AgentLoop {
 
     console.log(`  - DOM: ${domResult.elements.length} elements`);
     console.log(`  - Visual: ${visualResult.elements.length} elements`);
-    console.log(`  - Faces: ${privacyResult.faces.length} detected`);
+    console.log(`  - Faces: ${privacyResult.length} detected`);
 
     return {
       domElements: domResult.elements,
       visualElements: visualResult.elements,
-      privacyThreats: privacyResult.faces,
+      privacyThreats: privacyResult,
       timestamp: Date.now(),
       sensitiveElements: domResult.elements.filter((el) => (el as any).sensitivity === 'confidential').length,
     };
@@ -251,15 +251,15 @@ export class AgentLoop {
   /**
    * PHASE 3: Reason (send to backend/Claude)
    */
-  private async reason(sanitized: Awaited<ReturnType<typeof this.sanitize>>) {
+  private async reason(_sanitized: Awaited<ReturnType<typeof this.sanitize>>) {
     // TODO: Call backend reasoning endpoint
     // For now, return a mock action
     console.log(`  - Sending context to cloud reasoning`);
 
     // Mock action - in production, would call backend
     return {
-      action_type: 'wait',
-      target_id: null,
+      action_type: 'wait' as const,
+      target_id: undefined as string | undefined,
       duration_ms: 1000,
       confidence: 0.9,
       reason: 'Mock action pending cloud integration',
@@ -271,8 +271,8 @@ export class AgentLoop {
    */
   private validate(action: Awaited<ReturnType<typeof this.reason>>): boolean {
     // Validate against security policy
-    const validation = actionPolicyValidator.validate({
-      action: action.action_type as any,
+    const validation = ActionPolicyValidator.validate({
+      action: action.action_type as ActionPayload['action'],
       target_id: action.target_id,
       value: action.confidence,
     });
@@ -311,18 +311,18 @@ export class AgentLoop {
   /**
    * PHASE 5: Execute action
    */
-  private async execute(action: Awaited<ReturnType<typeof this.reason>>) {
-    // In browser context, send to content script
-    return new Promise((resolve) => {
-      chrome.runtime.sendMessage(
-        {
-          action: 'executeAction',
-          payload: action,
-        },
-        (response) => {
-          resolve(response || { success: false, error: 'No response' });
-        }
-      );
+  private async execute(action: Awaited<ReturnType<typeof this.reason>>): Promise<ActionResult> {
+    // AgentLoop always runs inside the content script (see content/index.ts's
+    // handleAgentLoop) which already has direct access to actionExecutor, so
+    // call it directly rather than round-tripping through
+    // chrome.runtime.sendMessage — a message sent via runtime.sendMessage
+    // from a content script goes to the background/extension pages, never
+    // back to the sending content script's own onMessage listener, so the
+    // previous implementation never received a real response.
+    return actionExecutor.execute({
+      action: action.action_type as ActionPayload['action'],
+      target_id: action.target_id,
+      duration_ms: action.duration_ms,
     });
   }
 
@@ -333,7 +333,7 @@ export class AgentLoop {
     const currentHash = this.hashPageState(observation);
     let elementsAdded = 0;
     let elementChanged = 0;
-    let elementsRemoved = 0;
+    const elementsRemoved = 0;
 
     if (this.previousPageHash && this.previousPageHash !== currentHash) {
       // Page changed - detect what changed
