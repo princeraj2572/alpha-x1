@@ -3,7 +3,7 @@
  * Measures visual perception accuracy against ground truth
  */
 
-import { visionEngine, VisualElement } from '@/vision/vision-engine';
+import { visionEngine } from '@/vision/vision-engine';
 
 export interface VisualDetectionTarget {
   type: 'button' | 'input' | 'text' | 'image' | 'link';

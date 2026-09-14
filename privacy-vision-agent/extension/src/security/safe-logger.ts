@@ -167,7 +167,7 @@ export class SafeLogger {
    * Check if key is sensitive
    */
   private isSensitiveKey(key: string): boolean {
-    return this.SENSITIVE_PATTERNS.some((pattern) => pattern.test(key));
+    return SafeLogger.SENSITIVE_PATTERNS.some((pattern) => pattern.test(key));
   }
 
   /**
@@ -176,7 +176,7 @@ export class SafeLogger {
   private isSensitiveValue(value: string): boolean {
     if (value.length > 1000) return false; // Don't check very long strings
 
-    return this.SENSITIVE_VALUES.some((pattern) => pattern.test(value));
+    return SafeLogger.SENSITIVE_VALUES.some((pattern) => pattern.test(value));
   }
 
   /**

@@ -224,7 +224,9 @@ export function scanDOM(): DOMScanResult {
     };
 
     // Apply privacy redaction
-    const redacted = privacyDetector.redactElement(element as Record<string, unknown>) as ExtractedElement;
+    const redacted = privacyDetector.redactElement(
+      element as unknown as Record<string, unknown>
+    ) as unknown as ExtractedElement;
 
     elements.push(redacted);
   }

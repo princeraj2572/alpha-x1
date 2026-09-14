@@ -4,9 +4,22 @@
  * Applies privacy rules at the fusion layer
  */
 
-import { ExtractedElement } from '@/types/index';
+import { BBox, ExtractedElement } from '@/types/index';
 import { VisualElement } from './vision-engine';
 import { PrivacyDetector, SensitivityLevel } from '@/privacy/detector';
+
+/**
+ * `ExtractedElement.bbox` (DOM scanner output) is a `BBox` tuple
+ * `[x, y, width, height]`, while `VisualElement.bbox` is `{x,y,width,height}`.
+ * getBboxKey/calculateIoU below assume the object shape — without this
+ * conversion, reading `.x`/`.y`/etc. off a tuple silently yields `undefined`
+ * for every DOM element, so IoU is always NaN and DOM↔visual fusion never
+ * matches anything.
+ */
+function toBboxObj(bbox: BBox): { x: number; y: number; width: number; height: number } {
+  const [x, y, width, height] = bbox;
+  return { x, y, width, height };
+}
 
 export interface FusedElement extends ExtractedElement {
   visualConfidence?: number;
@@ -36,7 +49,7 @@ export class PrivacyFusionEngine {
     domElements.forEach((domEl) => {
       const visualEl = this.findMatchingVisualElement(domEl, visualElements, visualMap);
 
-      const fused: FusedElement = {
+      const fusedEl: FusedElement = {
         ...domEl,
         visualConfidence: visualEl?.confidence,
         visualType: visualEl?.type,
@@ -44,9 +57,9 @@ export class PrivacyFusionEngine {
       };
 
       // Apply privacy rules to fused element
-      this.applyPrivacyRules(fused);
+      this.applyPrivacyRules(fusedEl);
 
-      fused.push(fused);
+      fused.push(fusedEl);
     });
 
     return fused;
@@ -65,7 +78,6 @@ export class PrivacyFusionEngine {
       );
 
       if (sensitivity === SensitivityLevel.CONFIDENTIAL) {
-        delete element.value;
         (element as any).sensitivity = 'confidential';
       }
     }
@@ -90,8 +102,9 @@ export class PrivacyFusionEngine {
     if (!domEl.bbox) {
       return undefined;
     }
+    const domBbox = toBboxObj(domEl.bbox);
 
-    const key = this.getBboxKey(domEl.bbox);
+    const key = this.getBboxKey(domBbox);
     const exactMatch = visualMap.get(key);
     if (exactMatch) {
       return exactMatch;
@@ -102,7 +115,7 @@ export class PrivacyFusionEngine {
     let bestIoU = 0;
 
     visualElements.forEach((ve) => {
-      const iou = this.calculateIoU(domEl.bbox!, ve.bbox);
+      const iou = this.calculateIoU(domBbox, ve.bbox);
       if (iou > bestIoU && iou > 0.3) {
         bestIoU = iou;
         bestMatch = ve;
