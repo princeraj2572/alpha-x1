@@ -13,7 +13,17 @@ export function ScreenshotTabs({
   disabledRaw?: boolean;
 }) {
   return (
-    <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
+    <div
+      style={{
+        display: 'flex',
+        gap: 3,
+        marginBottom: 10,
+        background: c.panel2,
+        border: `1px solid ${c.borderSoft}`,
+        borderRadius: c.radiusSm,
+        padding: 3,
+      }}
+    >
       {VIEWS.map((v) => {
         const active = v === view;
         const disabled = v === 'RAW' && disabledRaw;
@@ -27,13 +37,15 @@ export function ScreenshotTabs({
               padding: '6px 4px',
               fontSize: 11,
               fontWeight: 700,
-              letterSpacing: 0.5,
+              letterSpacing: 0.4,
               borderRadius: 6,
               cursor: disabled ? 'not-allowed' : 'pointer',
-              border: `1px solid ${active ? c.accent : c.border}`,
-              background: active ? c.accent : 'transparent',
-              color: active ? '#fff' : disabled ? c.dim : c.text,
-              opacity: disabled ? 0.4 : 1,
+              border: 'none',
+              background: active ? c.panel : 'transparent',
+              boxShadow: active ? c.shadowSm : 'none',
+              color: active ? c.text : disabled ? c.dim : c.text,
+              opacity: disabled ? 0.4 : active ? 1 : 0.72,
+              transition: 'all 140ms ease',
             }}
           >
             {v}

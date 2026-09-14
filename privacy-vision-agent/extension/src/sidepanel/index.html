@@ -3,43 +3,60 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Privacy Browser Agent — Inspection</title>
+  <title>Alpha X1 Privacy Browser Agent — Inspection</title>
   <style>
     :root {
-      color-scheme: light dark;
-      --bg: #0f172a;
-      --panel: #1e293b;
-      --panel-2: #273449;
-      --border: #334155;
-      --text: #e2e8f0;
-      --text-dim: #94a3b8;
-      --ok: #22c55e;
-      --warn: #f59e0b;
-      --bad: #ef4444;
+      color-scheme: dark;
+      --bg: #000000;
+      --glass: rgba(255, 255, 255, 0.055);
+      --glass-hover: rgba(255, 255, 255, 0.09);
+      --glass-border: rgba(255, 255, 255, 0.12);
+      --panel: var(--glass);
+      --panel-2: rgba(255, 255, 255, 0.08);
+      --panel-hover: var(--glass-hover);
+      --border: var(--glass-border);
+      --border-soft: rgba(255, 255, 255, 0.08);
+      --text: #f5f6fb;
+      --text-dim: rgba(235, 237, 245, 0.6);
+      --ok: #34d399;
+      --ok-soft: rgba(52, 211, 153, 0.16);
+      --warn: #fbbf24;
+      --warn-soft: rgba(251, 191, 36, 0.16);
+      --bad: #fb7185;
+      --bad-soft: rgba(251, 113, 133, 0.16);
       --accent: #6366f1;
-    }
-    @media (prefers-color-scheme: light) {
-      :root {
-        --bg: #f8fafc;
-        --panel: #ffffff;
-        --panel-2: #f1f5f9;
-        --border: #e2e8f0;
-        --text: #0f172a;
-        --text-dim: #64748b;
-      }
+      --accent-2: #818cf8;
+      --accent-soft: rgba(99, 102, 241, 0.2);
+      --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+      --shadow-md: 0 8px 28px -6px rgba(0, 0, 0, 0.6);
+      --radius: 14px;
+      --radius-sm: 10px;
+      --blur: 16px;
     }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { height: 100%; }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: var(--bg);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background:
+        radial-gradient(circle at 15% 0%, rgba(99, 102, 241, 0.16), transparent 45%),
+        radial-gradient(circle at 100% 25%, rgba(129, 140, 248, 0.08), transparent 40%),
+        var(--bg);
+      background-attachment: fixed;
       color: var(--text);
       font-size: 13px;
       line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
     }
     #root { height: 100%; overflow-y: auto; }
     ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+    ::selection { background: var(--accent-soft); }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes pulseSoft { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
   </style>
   <script type="module" src="./main.tsx"></script>
 </head>

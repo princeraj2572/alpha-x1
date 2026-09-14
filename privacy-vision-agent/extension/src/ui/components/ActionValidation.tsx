@@ -1,12 +1,13 @@
+import { Check as CheckIcon, X as XIcon, CheckCircle2, XCircle } from 'lucide-react';
 import { useAgentStore } from '../state/agent-store';
 import { Card, Empty, c } from './primitives';
 
 function Check({ label, value }: { label: string; value?: boolean }) {
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '2px 0' }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, padding: '3px 0' }}>
       <span style={{ color: c.dim }}>{label}</span>
-      <span style={{ color: value === undefined ? c.dim : value ? c.ok : c.bad }}>
-        {value === undefined ? '—' : value ? '✓' : '✕'}
+      <span style={{ display: 'inline-flex', color: value === undefined ? c.dim : value ? c.ok : c.bad }}>
+        {value === undefined ? '—' : value ? <CheckIcon size={13} strokeWidth={3} /> : <XIcon size={13} strokeWidth={3} />}
       </span>
     </div>
   );
@@ -31,13 +32,36 @@ export function ActionValidation() {
           <Check label="Schema valid" value={v.checks.schemaValid} />
         </>
       )}
-      <div style={{ textAlign: 'center', marginTop: 8, fontWeight: 700, fontSize: 13, color: v.status === 'approved' ? c.ok : v.status === 'blocked' ? c.bad : c.dim }}>
-        {v.status === 'approved' && '🟢 APPROVED'}
-        {v.status === 'blocked' && '🔴 BLOCKED'}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 6,
+          marginTop: 10,
+          fontWeight: 700,
+          fontSize: 13,
+          color: v.status === 'approved' ? c.ok : v.status === 'blocked' || v.status === 'error' ? c.bad : c.dim,
+        }}
+      >
+        {v.status === 'approved' && (
+          <>
+            <CheckCircle2 size={15} strokeWidth={2.25} /> APPROVED
+          </>
+        )}
+        {v.status === 'blocked' && (
+          <>
+            <XCircle size={15} strokeWidth={2.25} /> BLOCKED
+          </>
+        )}
         {v.status === 'checking' && 'checking…'}
-        {v.status === 'error' && '🔴 ERROR'}
+        {v.status === 'error' && (
+          <>
+            <XCircle size={15} strokeWidth={2.25} /> ERROR
+          </>
+        )}
       </div>
-      {v.reason && <p style={{ fontSize: 11, color: c.dim, marginTop: 4 }}>Reason: {v.reason}</p>}
+      {v.reason && <p style={{ fontSize: 11, color: c.dim, marginTop: 6 }}>Reason: {v.reason}</p>}
     </Card>
   );
 }

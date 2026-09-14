@@ -1,3 +1,4 @@
+import { CheckCircle2, XCircle } from 'lucide-react';
 import { useAgentStore } from '../state/agent-store';
 import { Card, Row, Empty, c } from './primitives';
 
@@ -15,8 +16,9 @@ export function ExecutionStatus() {
           <Row
             label="Result"
             value={
-              <span style={{ color: e.success ? c.ok : c.bad }}>
-                {e.success ? '🟢 executed' : '🔴 failed'}
+              <span style={{ color: e.success ? c.ok : c.bad, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                {e.success ? <CheckCircle2 size={13} strokeWidth={2.25} /> : <XCircle size={13} strokeWidth={2.25} />}
+                {e.success ? 'executed' : 'failed'}
               </span>
             }
           />

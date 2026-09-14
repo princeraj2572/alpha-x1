@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Eye, EyeOff, ShieldCheck, Send, Check } from 'lucide-react';
 import { useAgentStore, agentStore } from '../state/agent-store';
 import { canTransmit } from '../state/privacy-gate';
 import { approveAndSend, transmit, isStopped } from '../state/pipeline-runner';
@@ -45,11 +46,14 @@ export function PrivacyReview() {
           onChange={(e) => agentStore.setMode(e.target.value as 'strict' | 'automatic')}
           style={{
             fontSize: 10,
+            fontWeight: 600,
             background: c.panel2,
             color: c.text,
             border: `1px solid ${c.border}`,
             borderRadius: 6,
-            padding: '2px 4px',
+            padding: '3px 6px',
+            cursor: 'pointer',
+            outline: 'none',
           }}
         >
           <option value="strict">strict review</option>
@@ -63,24 +67,43 @@ export function PrivacyReview() {
           : 'Automatic mode still enforces the Privacy Gate — it will not send if the gate is not clean.'}
       </p>
 
-      <Button tone="ghost" onClick={() => setShowContext((v) => !v)}>
+      <Button
+        tone="ghost"
+        icon={showContext ? <EyeOff size={13} strokeWidth={2.25} /> : <Eye size={13} strokeWidth={2.25} />}
+        onClick={() => setShowContext((v) => !v)}
+      >
         {showContext ? 'Hide' : 'View'} Sanitized Context
       </Button>
       {showContext && <SanitizedContextViewer />}
 
-      <Button tone="ghost" onClick={() => setShowOutbound((v) => !v)}>
+      <Button
+        tone="ghost"
+        icon={showOutbound ? <EyeOff size={13} strokeWidth={2.25} /> : <Eye size={13} strokeWidth={2.25} />}
+        onClick={() => setShowOutbound((v) => !v)}
+      >
         {showOutbound ? 'Hide' : 'View'} Outbound Data
       </Button>
       {showOutbound && <OutboundDataViewer />}
 
       {s.privacyMode === 'strict' && !s.approved && !s.sent && (
-        <Button tone="default" disabled={s.gate.status === 'blocked' || s.gate.status === 'idle'} onClick={() => agentStore.setApproved(true)}>
+        <Button
+          tone="default"
+          disabled={s.gate.status === 'blocked' || s.gate.status === 'idle'}
+          icon={<ShieldCheck size={13} strokeWidth={2.25} />}
+          onClick={() => agentStore.setApproved(true)}
+        >
           Approve sanitized context
         </Button>
       )}
 
-      <Button tone="primary" disabled={!decision.allowed || pending} onClick={onSend} title={decision.reason}>
-        {s.sent ? 'Sent to cloud ✓' : pending ? 'Sending…' : 'Send to Cloud'}
+      <Button
+        tone="primary"
+        disabled={!decision.allowed || pending}
+        onClick={onSend}
+        title={decision.reason}
+        icon={s.sent ? <Check size={13} strokeWidth={2.5} /> : <Send size={13} strokeWidth={2.25} />}
+      >
+        {s.sent ? 'Sent to cloud' : pending ? 'Sending…' : 'Send to Cloud'}
       </Button>
       {!decision.allowed && !s.sent && (
         <p style={{ fontSize: 10, color: c.dim, marginTop: 4 }}>Send disabled: {decision.reason}</p>

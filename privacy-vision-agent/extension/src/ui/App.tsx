@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { ShieldCheck, Play, Square, RotateCcw } from 'lucide-react';
 import { agentStore, useAgentStore } from './state/agent-store';
 import { getBackendStatus, onAgentEvent, stopAgent } from './state/messaging';
 import { runInspection, markStopped, resumeFromStop, isStopped } from './state/pipeline-runner';
@@ -127,59 +128,82 @@ export function App() {
           position: 'sticky',
           top: 0,
           zIndex: 5,
-          background: c.panel,
-          borderBottom: `1px solid ${c.border}`,
-          padding: '10px 12px',
+          background: 'rgba(0, 0, 0, 0.55)',
+          backdropFilter: 'blur(16px)',
+          WebkitBackdropFilter: 'blur(16px)',
+          borderBottom: `1px solid ${c.borderSoft}`,
+          padding: '12px 14px',
           display: 'flex',
           alignItems: 'center',
-          gap: 8,
+          gap: 9,
         }}
       >
-        <strong style={{ fontSize: 13 }}>🔐 Privacy Browser Agent</strong>
+        <span
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            width: 26,
+            height: 26,
+            borderRadius: 8,
+            background: c.accentSoft,
+            color: c.accent2,
+          }}
+        >
+          <ShieldCheck size={15} strokeWidth={2.25} />
+        </span>
+        <strong style={{ fontSize: 12.5, letterSpacing: 0.1 }}>Alpha X1 Privacy Browser Agent</strong>
       </header>
 
       <Card>
-        <div style={{ marginBottom: 6 }}>
-          <label style={{ fontSize: 11, color: c.dim }}>Task</label>
+        <div style={{ marginBottom: 8 }}>
+          <label style={{ fontSize: 11, color: c.dim, fontWeight: 600 }}>Task</label>
           <textarea
             value={s.task}
             onChange={(e) => agentStore.setTask(e.target.value)}
             rows={2}
             style={{
               width: '100%',
-              marginTop: 4,
+              marginTop: 5,
               background: c.panel2,
               color: c.text,
               border: `1px solid ${c.border}`,
-              borderRadius: 6,
-              padding: 6,
+              borderRadius: c.radiusSm,
+              padding: 8,
               fontSize: 12,
+              fontFamily: 'inherit',
               resize: 'vertical',
+              outline: 'none',
+              transition: 'border-color 120ms ease',
             }}
+            onFocus={(e) => (e.currentTarget.style.borderColor = c.accent)}
+            onBlur={(e) => (e.currentTarget.style.borderColor = c.border)}
           />
         </div>
         {!stopped ? (
           <Button
             tone="primary"
             disabled={s.status === 'processing'}
+            icon={<Play size={13} strokeWidth={2.5} fill="currentColor" />}
             onClick={() => runInspection()}
           >
             {s.status === 'processing' ? 'Processing…' : s.sent ? 'Run New Inspection' : 'Start Agent'}
           </Button>
         ) : (
-          <Button tone="default" onClick={() => resumeFromStop()}>
+          <Button tone="default" icon={<RotateCcw size={13} strokeWidth={2.5} />} onClick={() => resumeFromStop()}>
             Resume (clear stop)
           </Button>
         )}
         <Button
           tone="danger"
           disabled={stopped}
+          icon={<Square size={12} strokeWidth={2.5} fill="currentColor" />}
           onClick={async () => {
             await stopAgent();
             markStopped('user');
           }}
         >
-          🛑 Stop Agent
+          Stop Agent
         </Button>
       </Card>
 

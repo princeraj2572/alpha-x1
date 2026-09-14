@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Privacy Vision Agent",
+  "name": "Alpha X1 Privacy Browser Agent",
   "version": "0.1.0",
   "description": "On-device visual perception for privacy-preserving browser agents",
   "permissions": [
@@ -21,7 +21,7 @@
     "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';"
   },
   "action": {
-    "default_title": "Privacy Vision Agent",
+    "default_title": "Alpha X1 Privacy Browser Agent",
     "default_popup": "popup.html"
   },
   "side_panel": {

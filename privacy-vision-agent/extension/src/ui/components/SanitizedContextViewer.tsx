@@ -26,16 +26,18 @@ export function SanitizedContextViewer() {
   return (
     <pre
       style={{
-        background: '#0b1220',
+        background: '#0a0f1c',
         color: '#c7d2fe',
         fontSize: 10.5,
-        fontFamily: 'ui-monospace, monospace',
-        padding: 10,
-        borderRadius: 8,
-        border: `1px solid ${c.border}`,
+        lineHeight: 1.55,
+        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+        padding: 12,
+        borderRadius: c.radiusSm,
+        border: `1px solid ${c.borderSoft}`,
+        boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.3)',
         maxHeight: 260,
         overflow: 'auto',
-        marginTop: 6,
+        marginTop: 8,
       }}
     >
       {JSON.stringify(display, null, 2)}
