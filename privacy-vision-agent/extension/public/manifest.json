@@ -17,6 +17,9 @@
     "service_worker": "js/background.js",
     "type": "module"
   },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';"
+  },
   "action": {
     "default_title": "Privacy Vision Agent",
     "default_popup": "popup.html"
