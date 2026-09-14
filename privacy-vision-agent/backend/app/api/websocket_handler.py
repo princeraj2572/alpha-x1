@@ -3,6 +3,7 @@ WebSocket endpoint for extension communication
 """
 
 import json
+import os
 import asyncio
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 from datetime import datetime
@@ -167,6 +168,14 @@ async def websocket_endpoint(
 
         logger.info(f"Session created: {session_id} (client: {client_id})")
 
+        # Resolve the configured provider/model so the Side Panel can display
+        # exactly which cloud model will receive the sanitized context.
+        provider = os.getenv("AI_PROVIDER", "anthropic").lower()
+        if provider == "openai":
+            model = os.getenv("OPENAI_MODEL", "gpt-4-turbo-preview")
+        else:
+            model = os.getenv("ANTHROPIC_MODEL", "claude-3-sonnet")
+
         # Send welcome message with session ID
         welcome = MessageEnvelope(
             protocol_version="1.0",
@@ -178,6 +187,8 @@ async def websocket_endpoint(
                 "message": "Connected to Privacy Vision Agent Backend",
                 "session_id": session_id,
                 "server_timestamp": datetime.utcnow().isoformat(),
+                "provider": provider,
+                "model": model,
             },
         )
         await send_message(websocket, welcome)
