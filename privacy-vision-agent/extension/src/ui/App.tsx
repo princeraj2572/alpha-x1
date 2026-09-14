@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { ShieldCheck, Play, Square, RotateCcw } from 'lucide-react';
+import { Play, Square, RotateCcw } from 'lucide-react';
 import { agentStore, useAgentStore } from './state/agent-store';
 import { getBackendStatus, onAgentEvent, stopAgent } from './state/messaging';
 import { runInspection, markStopped, resumeFromStop, isStopped } from './state/pipeline-runner';
@@ -146,11 +146,13 @@ export function App() {
             width: 26,
             height: 26,
             borderRadius: 8,
-            background: c.accentSoft,
-            color: c.accent2,
+            background: '#000',
+            border: `1px solid ${c.borderSoft}`,
+            overflow: 'hidden',
+            flexShrink: 0,
           }}
         >
-          <ShieldCheck size={15} strokeWidth={2.25} />
+          <img src="icons/icon48.png" alt="AX1 logo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
         </span>
         <strong style={{ fontSize: 12.5, letterSpacing: 0.1 }}>Alpha X1 Privacy Browser Agent</strong>
       </header>
