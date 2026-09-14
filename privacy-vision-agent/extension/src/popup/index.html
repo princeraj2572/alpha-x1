@@ -214,6 +214,9 @@
         <label>Status:</label>
         <value id="screenshotStatus">Not captured</value>
       </div>
+      <div id="screenshotPreview" style="margin-top: 12px; display: none;">
+        <img id="screenshotImg" style="width: 100%; border-radius: 8px; background: rgba(0,0,0,0.2); max-height: 300px; object-fit: contain;" />
+      </div>
     </div>
 
     <div class="card">
@@ -237,6 +240,7 @@
     </div>
 
     <div class="buttons">
+      <button class="btn-primary" id="openPanelBtn">🔐 Open Privacy Inspection Panel</button>
       <button class="btn-primary" id="scanBtn">Scan DOM</button>
       <button class="btn-primary" id="screenshotBtn">Capture Screenshot</button>
       <button class="btn-primary" id="reasonBtn">🤖 Ask Agent</button>

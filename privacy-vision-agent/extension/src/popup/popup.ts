@@ -15,6 +15,8 @@ const linkCount = document.getElementById('linkCount')!;
 const otherCount = document.getElementById('otherCount')!;
 const lastScan = document.getElementById('lastScan')!;
 const screenshotStatus = document.getElementById('screenshotStatus')!;
+const screenshotPreview = document.getElementById('screenshotPreview')!;
+const screenshotImg = document.getElementById('screenshotImg')! as HTMLImageElement;
 const scanBtn = document.getElementById('scanBtn')! as HTMLButtonElement;
 const screenshotBtn = document.getElementById('screenshotBtn')! as HTMLButtonElement;
 const reasonBtn = document.getElementById('reasonBtn')! as HTMLButtonElement;
@@ -145,6 +147,11 @@ async function handleScreenshot(): Promise<void> {
     if (screenshot) {
       cacheScreenshot(screenshot);
       screenshotStatus.textContent = `Captured (${screenshot.width}x${screenshot.height})`;
+
+      // Display screenshot preview
+      screenshotImg.src = screenshot.dataUrl;
+      screenshotPreview.style.display = 'block';
+
       showSuccess('Screenshot captured locally');
 
       console.log('[Privacy Vision Agent] Screenshot captured:', {
@@ -175,6 +182,8 @@ function handleReset(): void {
   otherCount.textContent = '—';
   lastScan.textContent = 'Never';
   screenshotStatus.textContent = 'Not captured';
+  screenshotPreview.style.display = 'none';
+  screenshotImg.src = '';
   showSuccess('Reset complete');
 }
 
@@ -203,7 +212,30 @@ async function handleReason(): Promise<void> {
   }
 }
 
+const openPanelBtn = document.getElementById('openPanelBtn') as HTMLButtonElement | null;
+
+async function handleOpenPanel(): Promise<void> {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const panel = (chrome as unknown as { sidePanel?: { open: (o: { tabId?: number; windowId?: number }) => Promise<void> } }).sidePanel;
+    if (!panel) {
+      showError('Side Panel needs Chrome 114+');
+      return;
+    }
+    if (tab?.windowId !== undefined) {
+      await panel.open({ windowId: tab.windowId });
+    } else if (tab?.id !== undefined) {
+      await panel.open({ tabId: tab.id });
+    }
+    window.close();
+  } catch (error) {
+    console.error('Open panel error:', error);
+    showError('Could not open the inspection panel');
+  }
+}
+
 // Event listeners
+openPanelBtn?.addEventListener('click', handleOpenPanel);
 scanBtn.addEventListener('click', handleScan);
 screenshotBtn.addEventListener('click', handleScreenshot);
 reasonBtn.addEventListener('click', handleReason);
@@ -241,6 +273,8 @@ async function initialize(): Promise<void> {
     const cached = getCachedScreenshot();
     if (cached) {
       screenshotStatus.textContent = `Captured (${cached.width}x${cached.height})`;
+      screenshotImg.src = cached.dataUrl;
+      screenshotPreview.style.display = 'block';
     }
 
     // Update backend status
