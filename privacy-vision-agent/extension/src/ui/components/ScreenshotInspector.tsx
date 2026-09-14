@@ -58,6 +58,7 @@ export function ScreenshotInspector() {
           naturalHeight={rawCapture?.height ?? 0}
           overlayFindings={showDetectionRegions ? findings : undefined}
           selectedKey={selectedFindingKey}
+          label="Raw"
           banner={
             <div
               style={{
@@ -87,6 +88,7 @@ export function ScreenshotInspector() {
           naturalHeight={sanitizedScreenshot?.height ?? 0}
           overlayFindings={showDetectionRegions ? findings : undefined}
           selectedKey={selectedFindingKey}
+          label="Sanitized"
           banner={
             <div
               style={{

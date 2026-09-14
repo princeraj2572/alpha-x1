@@ -37,7 +37,7 @@ export function SplitScreenshotView({
     >
       <div>
         <SideLabel tone="bad" title="RAW" subtitle="LOCAL ONLY" />
-        <ScreenshotPreview dataUrl={rawUrl} naturalWidth={rawW} naturalHeight={rawH} />
+        <ScreenshotPreview dataUrl={rawUrl} naturalWidth={rawW} naturalHeight={rawH} label="Raw" />
       </div>
       <div>
         <SideLabel tone="ok" title="SANITIZED" subtitle="CLOUD ELIGIBLE" />
@@ -47,6 +47,7 @@ export function SplitScreenshotView({
           naturalHeight={sanH}
           overlayFindings={showRegions ? overlayFindings : undefined}
           selectedKey={selectedKey}
+          label="Sanitized"
         />
       </div>
     </div>
