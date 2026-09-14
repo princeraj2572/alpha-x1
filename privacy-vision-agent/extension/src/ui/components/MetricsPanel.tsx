@@ -1,5 +1,5 @@
 import { useAgentStore } from '../state/agent-store';
-import { Card, Row, Empty } from './primitives';
+import { Card, Row, Empty, c } from './primitives';
 
 function ms(v?: number): string {
   return v === undefined ? '—' : `${v.toFixed(v < 10 ? 1 : 0)} ms`;
@@ -22,7 +22,8 @@ export function MetricsPanel() {
           <Row label="Sanitized payload" value={m.sanitizedPayloadBytes ? `${m.sanitizedPayloadBytes.toLocaleString()} B` : '—'} mono />
           <Row label="Network latency" value={ms(m.networkLatencyMs)} mono />
           <Row label="Cloud latency" value={ms(m.cloudLatencyMs)} mono />
-          <Row label="Total latency" value={ms(m.totalLatencyMs)} mono />
+          <div style={{ height: 1, background: c.borderSoft, margin: '6px 0' }} />
+          <Row label={<strong>Total latency</strong>} value={<strong>{ms(m.totalLatencyMs)}</strong>} mono />
         </>
       )}
     </Card>

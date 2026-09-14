@@ -43,9 +43,11 @@ export function DetectionOverlay({
                 top: b.y * sy,
                 width: Math.max(6, b.width * sx),
                 height: Math.max(6, b.height * sy),
-                border: `2px solid ${selected ? c.accent : c.warn}`,
-                background: selected ? 'rgba(99,102,241,0.15)' : 'rgba(245,158,11,0.10)',
-                borderRadius: 3,
+                border: `2px solid ${selected ? c.accent2 : c.warn}`,
+                background: selected ? c.accentSoft : 'rgba(245,158,11,0.10)',
+                borderRadius: 4,
+                boxShadow: selected ? `0 0 0 3px ${c.accentSoft}` : 'none',
+                transition: 'border-color 120ms ease, box-shadow 120ms ease',
               }}
             >
               <span

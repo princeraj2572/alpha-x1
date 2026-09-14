@@ -1,3 +1,4 @@
+import { Lock, ShieldCheck, Scan } from 'lucide-react';
 import { useAgentStore, agentStore } from '../state/agent-store';
 import { Card, c } from './primitives';
 import { ScreenshotTabs } from './ScreenshotTabs';
@@ -25,15 +26,21 @@ export function ScreenshotInspector() {
         <button
           onClick={() => agentStore.toggleDetectionRegions()}
           style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 5,
             fontSize: 10,
-            padding: '3px 8px',
-            borderRadius: 6,
-            border: `1px solid ${c.border}`,
-            background: showDetectionRegions ? c.accent : 'transparent',
-            color: showDetectionRegions ? '#fff' : c.dim,
+            fontWeight: 600,
+            padding: '4px 9px',
+            borderRadius: 999,
+            border: `1px solid ${showDetectionRegions ? c.accent : c.border}`,
+            background: showDetectionRegions ? c.accentSoft : 'transparent',
+            color: showDetectionRegions ? c.accent2 : c.dim,
             cursor: 'pointer',
+            transition: 'all 120ms ease',
           }}
         >
+          <Scan size={11} strokeWidth={2.25} />
           {showDetectionRegions ? 'Hide' : 'Show'} Detection Regions
         </button>
       }
@@ -54,17 +61,19 @@ export function ScreenshotInspector() {
           banner={
             <div
               style={{
-                background: 'rgba(239,68,68,0.12)',
+                background: c.badSoft,
                 border: `1px solid ${c.bad}`,
-                borderRadius: 8,
-                padding: '6px 8px',
-                marginBottom: 6,
+                borderRadius: c.radiusSm,
+                padding: '8px 10px',
+                marginBottom: 8,
                 fontSize: 11,
               }}
             >
-              <strong style={{ color: c.bad }}>RAW SCREENSHOT — LOCAL ONLY</strong>
-              <div style={{ color: c.dim, marginTop: 2 }}>
-                🔒 This screenshot exists only on this device. It is NOT eligible for cloud transmission.
+              <strong style={{ color: c.bad, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <Lock size={12} strokeWidth={2.5} /> RAW SCREENSHOT — LOCAL ONLY
+              </strong>
+              <div style={{ color: c.dim, marginTop: 3 }}>
+                This screenshot exists only on this device. It is NOT eligible for cloud transmission.
               </div>
             </div>
           }
@@ -81,16 +90,18 @@ export function ScreenshotInspector() {
           banner={
             <div
               style={{
-                background: 'rgba(34,197,94,0.10)',
+                background: c.okSoft,
                 border: `1px solid ${c.ok}`,
-                borderRadius: 8,
-                padding: '6px 8px',
-                marginBottom: 6,
+                borderRadius: c.radiusSm,
+                padding: '8px 10px',
+                marginBottom: 8,
                 fontSize: 11,
               }}
             >
-              <strong style={{ color: c.ok }}>SANITIZED SCREENSHOT — CLOUD ELIGIBLE</strong>
-              <div style={{ color: c.dim, marginTop: 2 }}>
+              <strong style={{ color: c.ok, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <ShieldCheck size={12} strokeWidth={2.5} /> SANITIZED SCREENSHOT — CLOUD ELIGIBLE
+              </strong>
+              <div style={{ color: c.dim, marginTop: 3 }}>
                 This is the exact image that will be transmitted. {screenshotPhase === 'sanitizing' && '(processing…)'}
               </div>
             </div>

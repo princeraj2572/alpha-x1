@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { useLayoutEffect, useRef, useState } from 'react';
+import { ImageOff } from 'lucide-react';
 import { UiFinding } from '../state/types';
 import { DetectionOverlay } from './DetectionOverlay';
 import { c } from './primitives';
@@ -45,14 +46,19 @@ export function ScreenshotPreview({
     return (
       <div
         style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: 6,
           border: `1px dashed ${c.border}`,
-          borderRadius: 8,
-          padding: 24,
+          borderRadius: c.radius,
+          padding: 28,
           textAlign: 'center',
           color: c.dim,
           fontSize: 12,
         }}
       >
+        <ImageOff size={20} strokeWidth={1.5} style={{ opacity: 0.6 }} />
         No screenshot yet.
       </div>
     );
@@ -67,8 +73,9 @@ export function ScreenshotPreview({
           position: 'relative',
           maxHeight: 340,
           overflow: 'auto',
-          border: `1px solid ${c.border}`,
-          borderRadius: 8,
+          border: `1px solid ${c.borderSoft}`,
+          borderRadius: c.radius,
+          boxShadow: c.shadowSm,
           background: '#000',
         }}
       >

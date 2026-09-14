@@ -189,7 +189,7 @@ function handleReset(): void {
 
 async function handleReason(): Promise<void> {
   reasonBtn.disabled = true;
-  reasonBtn.textContent = '🤖 Thinking...';
+  reasonBtn.textContent = 'Thinking...';
 
   try {
     // Send message to background to trigger reasoning
@@ -208,7 +208,7 @@ async function handleReason(): Promise<void> {
     showError('Error contacting agent');
   } finally {
     reasonBtn.disabled = false;
-    reasonBtn.textContent = '🤖 Ask Agent';
+    reasonBtn.textContent = 'Ask Agent';
   }
 }
 
