@@ -38,6 +38,17 @@ yarn-error.log*
 # Temporary
 .cache/
 temp/
+
+# Local ML model weights — not committed (large binaries, third-party
+# licensing varies by source model; see DECISIONS.md DECISION-018).
+# Each developer/deployment fetches its own copy per OPERATIONS.md §8.2.
+extension/public/models/*.onnx
+extension/public/ort/
+
+# Tesseract.js OCR assets — not committed (large binaries: worker script,
+# WASM core, language training data). See DECISIONS.md DECISION-023 and
+# OPERATIONS.md §8.5 for how to fetch/place them.
+extension/public/tesseract/
 tmp/
 
 # Python
