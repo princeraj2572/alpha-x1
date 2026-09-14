@@ -6,13 +6,15 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const distDir = path.join(__dirname, '..', 'dist');
-const srcPopupHtml = path.join(distDir, 'src', 'popup', 'index.html');
-const targetPopupHtml = path.join(distDir, 'popup.html');
 
-// Copy popup.html to root if it exists
-if (fs.existsSync(srcPopupHtml)) {
-  fs.copyFileSync(srcPopupHtml, targetPopupHtml);
-  console.log('✓ Copied popup.html to dist root');
+// Copy each HTML entry (built under dist/src/<name>/index.html) to dist root.
+for (const name of ['popup', 'sidepanel']) {
+  const src = path.join(distDir, 'src', name, 'index.html');
+  const target = path.join(distDir, `${name}.html`);
+  if (fs.existsSync(src)) {
+    fs.copyFileSync(src, target);
+    console.log(`✓ Copied ${name}.html to dist root`);
+  }
 }
 
 // Clean up unnecessary directories
