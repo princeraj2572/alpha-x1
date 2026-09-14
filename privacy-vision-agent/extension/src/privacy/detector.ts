@@ -1,7 +1,21 @@
 /**
- * Local privacy detection and redaction
- * All sensitive data processing happens client-side
+ * Backward-compatible facade over the local detection layer.
+ *
+ * The real work now lives in:
+ *   - `regex-detector.ts`     textual PII (email/phone/card/Aadhaar/PAN/UPI/IP)
+ *   - `dom-rules.ts`          semantic form-field classification
+ *   - `detection-fusion.ts`   merge / conflict resolution
+ *   - `redactor.ts`           token + visual redaction
+ *   - `pipeline.ts`           orchestration
+ *
+ * This module keeps the older `PrivacyDetector` API that `dom-scanner.ts`,
+ * `vision/fusion.ts` and the evaluators already call, so nothing downstream
+ * had to change. New code should import the modules above directly.
  */
+
+import { regexDetector } from './regex-detector';
+import { classifyField } from './dom-rules';
+import { PrivacyType } from './types';
 
 export enum SensitivityLevel {
   PUBLIC = 'public',
@@ -17,79 +31,50 @@ export interface RedactionResult {
   redactedValue?: string;
 }
 
+/** Types that always imply the highest sensitivity band. */
+const CONFIDENTIAL_TYPES: ReadonlySet<PrivacyType> = new Set([
+  PrivacyType.PASSWORD,
+  PrivacyType.EMAIL,
+  PrivacyType.PHONE,
+  PrivacyType.CREDIT_CARD,
+  PrivacyType.CARD_CVV,
+  PrivacyType.CARD_EXPIRY,
+  PrivacyType.AADHAAR_LIKE_ID,
+  PrivacyType.PAN_LIKE_ID,
+  PrivacyType.UPI_ID,
+  PrivacyType.ACCOUNT_NUMBER,
+  PrivacyType.IP_ADDRESS,
+  PrivacyType.OTHER_SENSITIVE,
+]);
+
 export class PrivacyDetector {
-  // Regex patterns for PII detection
-  private static readonly PATTERNS = {
-    email: /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/,
-    phone: /\b(?:\+?1[-.]?)?\(?([0-9]{3})\)?[-.]?([0-9]{3})[-.]?([0-9]{4})\b/,
-    ssn: /\b(?!000|666|9\d{2})\d{3}-(?!00)\d{2}-(?!0000)\d{4}\b/,
-    creditCard: /\b(?:\d{4}[-\s]?){3}\d{4}\b/,
-    ipAddress: /\b(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b/,
-  };
-
-  // Field names that indicate sensitive content
-  private static readonly SENSITIVE_FIELD_NAMES = {
-    password: true,
-    passwd: true,
-    pwd: true,
-    secret: true,
-    pin: true,
-    credit_card: true,
-    card_number: true,
-    cvv: true,
-    cvc: true,
-    ssn: true,
-    social_security: true,
-    passport: true,
-    license: true,
-    drivers_license: true,
-    private_key: true,
-    api_key: true,
-    token: true,
-    session: true,
-    auth: true,
-    login: true,
-  };
-
-  // Input types that indicate sensitive content
-  private static readonly SENSITIVE_INPUT_TYPES = {
-    password: true,
-    email: true,
-    tel: true,
-    hidden: true,
-  };
-
+  /**
+   * Detect PII inside a free-text string. Returns the first (highest priority)
+   * match as a legacy `RedactionResult`.
+   */
   static detectPii(text: string | null | undefined): RedactionResult {
     if (!text) {
-      return {
-        isSensitive: false,
-        sensitivityLevel: SensitivityLevel.PUBLIC,
-        reason: 'Empty value',
-      };
+      return { isSensitive: false, sensitivityLevel: SensitivityLevel.PUBLIC, reason: 'Empty value' };
     }
-
-    const textStr = String(text).trim();
-
-    // Check each pattern
-    for (const [patternName, pattern] of Object.entries(this.PATTERNS)) {
-      if (pattern.test(textStr)) {
-        console.log(`[Privacy] Detected ${patternName}: ${textStr.substring(0, 20)}...`);
-        return {
-          isSensitive: true,
-          sensitivityLevel: SensitivityLevel.CONFIDENTIAL,
-          reason: `Detected ${patternName}`,
-          redactedValue: `[${patternName.toUpperCase()}]`,
-        };
-      }
+    const findings = regexDetector.scan(String(text).trim());
+    if (findings.length === 0) {
+      return { isSensitive: false, sensitivityLevel: SensitivityLevel.PUBLIC, reason: 'No PII detected' };
     }
-
+    // Prefer the highest-confidence finding.
+    const top = findings.slice().sort((a, b) => b.confidence - a.confidence)[0];
     return {
-      isSensitive: false,
-      sensitivityLevel: SensitivityLevel.PUBLIC,
-      reason: 'No PII detected',
+      isSensitive: true,
+      sensitivityLevel: CONFIDENTIAL_TYPES.has(top.type)
+        ? SensitivityLevel.CONFIDENTIAL
+        : SensitivityLevel.SENSITIVE,
+      reason: `Detected ${top.type} (${top.detail ?? 'regex'})`,
+      redactedValue: top.replacement ?? '[REDACTED]',
     };
   }
 
+  /**
+   * Classify a form field's sensitivity from its metadata.
+   */
   static checkFieldSensitivity(
     fieldName?: string,
     inputType?: string,
@@ -98,59 +83,45 @@ export class PrivacyDetector {
     if (!fieldName && !inputType && !ariaLabel) {
       return SensitivityLevel.PUBLIC;
     }
-
-    // Check field name
-    if (fieldName) {
-      const fieldLower = fieldName.toLowerCase();
-      if (this.SENSITIVE_FIELD_NAMES[fieldLower as keyof typeof this.SENSITIVE_FIELD_NAMES]) {
-        return SensitivityLevel.CONFIDENTIAL;
-      }
+    const cls = classifyField({
+      name: fieldName,
+      id: fieldName,
+      inputType,
+      ariaLabel,
+    });
+    if (!cls) {
+      return SensitivityLevel.PUBLIC;
     }
-
-    // Check input type
-    if (inputType) {
-      const typeLower = inputType.toLowerCase();
-      if (this.SENSITIVE_INPUT_TYPES[typeLower as keyof typeof this.SENSITIVE_INPUT_TYPES]) {
-        return SensitivityLevel.CONFIDENTIAL;
-      }
-    }
-
-    // Check aria-label
-    if (ariaLabel) {
-      const labelLower = ariaLabel.toLowerCase();
-      for (const term of Object.keys(this.SENSITIVE_FIELD_NAMES)) {
-        if (labelLower.includes(term)) {
-          return SensitivityLevel.CONFIDENTIAL;
-        }
-      }
-    }
-
-    return SensitivityLevel.INTERNAL;
+    return CONFIDENTIAL_TYPES.has(cls.type)
+      ? SensitivityLevel.CONFIDENTIAL
+      : SensitivityLevel.SENSITIVE;
   }
 
+  /**
+   * Redact a plain element record: drop the value of sensitive fields, and
+   * token-replace any PII found in its text.
+   */
   static redactElement(element: Record<string, unknown>): Record<string, unknown> {
-    const redacted = { ...element };
+    const redacted: Record<string, unknown> = { ...element };
 
-    // Check if field is sensitive
     const sensitivity = this.checkFieldSensitivity(
       element.id as string | undefined,
-      element.type as string | undefined,
-      element.label as string | undefined
+      (element.type as string | undefined) ??
+        ((element.metadata as Record<string, unknown> | undefined)?.inputType as string | undefined),
+      (element.label as string | undefined) ?? (element.ariaLabel as string | undefined)
     );
 
-    // For password/email/tel fields, don't expose the value
-    if (sensitivity === SensitivityLevel.CONFIDENTIAL) {
+    if (sensitivity === SensitivityLevel.CONFIDENTIAL || sensitivity === SensitivityLevel.SENSITIVE) {
       delete redacted.value;
       redacted.sensitivity = 'confidential';
       redacted.note = 'Value redacted for privacy';
     }
 
-    // Check text content for PII
-    if (element.text) {
-      const piiResult = this.detectPii(element.text as string);
-      if (piiResult.isSensitive) {
-        redacted.text = piiResult.redactedValue;
-        redacted.sensitivity = piiResult.sensitivityLevel;
+    if (typeof element.text === 'string' && element.text) {
+      const pii = this.detectPii(element.text);
+      if (pii.isSensitive) {
+        redacted.text = pii.redactedValue;
+        redacted.sensitivity = pii.sensitivityLevel;
       }
     }
 
@@ -158,4 +129,13 @@ export class PrivacyDetector {
   }
 }
 
-export const privacyDetector = new PrivacyDetector();
+/**
+ * Legacy instance export. Kept as an object exposing the same static methods
+ * so existing `privacyDetector.redactElement(...)` call sites keep working
+ * (the previous `new PrivacyDetector()` instance did NOT expose them).
+ */
+export const privacyDetector = {
+  detectPii: PrivacyDetector.detectPii.bind(PrivacyDetector),
+  checkFieldSensitivity: PrivacyDetector.checkFieldSensitivity.bind(PrivacyDetector),
+  redactElement: PrivacyDetector.redactElement.bind(PrivacyDetector),
+};
