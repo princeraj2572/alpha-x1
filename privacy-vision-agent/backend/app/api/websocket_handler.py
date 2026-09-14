@@ -173,6 +173,8 @@ async def websocket_endpoint(
         provider = os.getenv("AI_PROVIDER", "anthropic").lower()
         if provider == "openai":
             model = os.getenv("OPENAI_MODEL", "gpt-4-turbo-preview")
+        elif provider == "ollama":
+            model = os.getenv("OLLAMA_MODEL", "llava")
         else:
             model = os.getenv("ANTHROPIC_MODEL", "claude-3-sonnet")
 
