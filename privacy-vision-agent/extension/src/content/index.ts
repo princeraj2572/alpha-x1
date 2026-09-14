@@ -8,7 +8,8 @@ import { actionExecutor, ActionPayload } from '@/executor/action-executor';
 import { visionEngine } from '@/vision/vision-engine';
 import { privacyFusionEngine } from '@/vision/fusion';
 import { visualPrivacyEngine } from '@/vision/privacy';
-import { agentLoop, AgentLoopConfig } from '@/agent/loop';
+import { AgentLoop, AgentLoopConfig } from '@/agent/loop';
+import { privacyPipeline, toWireFinding } from '@/privacy/pipeline';
 
 console.log('[Privacy Vision Agent] Content script loaded');
 
@@ -32,6 +33,9 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
     return true; // Keep channel open for async response
   } else if (request.action === 'detectVisualPrivacy') {
     handleDetectVisualPrivacy(sendResponse);
+    return true; // Keep channel open for async response
+  } else if (request.action === 'sanitizePage') {
+    handleSanitizePage(sendResponse);
     return true; // Keep channel open for async response
   } else if (request.action === 'executeAction') {
     handleExecuteAction(request.payload, sendResponse);
@@ -108,6 +112,58 @@ async function handleDetectVisualPrivacy(sendResponse: (response: unknown) => vo
   }
 }
 
+/**
+ * Run the local detection & sanitization pipeline over the current page and
+ * return the sanitized context. This is the artifact that is safe to send to
+ * the backend — findings are stripped of raw values via `toWireFinding`.
+ */
+async function handleSanitizePage(sendResponse: (response: unknown) => void): Promise<void> {
+  try {
+    const domResult = scanDOM();
+
+    // Collect visible text blocks (labels, headings, short paragraphs) so the
+    // regex layer can catch PII that lives in page copy rather than in fields.
+    const texts: Array<{ text: string; elementId?: string }> = [];
+    document.querySelectorAll('label, h1, h2, h3, h4, p, span, li, td, div').forEach((el, i) => {
+      if (el.children.length > 0) {
+        return;
+      }
+      const text = (el.textContent || '').trim();
+      if (text.length >= 4 && text.length <= 400) {
+        texts.push({ text, elementId: (el as HTMLElement).id || `text-${i}` });
+      }
+    });
+
+    const result = await privacyPipeline.run(
+      { document, texts },
+      { enableFace: false, enableVision: false }
+    );
+
+    sendResponse({
+      success: true,
+      data: {
+        page: domResult.page,
+        elements: domResult.elements,
+        sanitizedTexts: result.redactedTexts,
+        findings: result.findings.map(toWireFinding),
+        report: result.report,
+        timing: result.timing,
+        backends: result.backends,
+        viewport: {
+          width: window.innerWidth,
+          height: window.innerHeight,
+          dpr: window.devicePixelRatio || 1,
+          scrollX: window.scrollX,
+          scrollY: window.scrollY,
+        },
+      },
+    });
+  } catch (error) {
+    console.error('[Privacy Vision Agent] sanitizePage error:', error);
+    sendResponse({ success: false, error: error instanceof Error ? error.message : String(error) });
+  }
+}
+
 async function handleExecuteAction(payload: ActionPayload, sendResponse: (response: unknown) => void): Promise<void> {
   try {
     console.log('[Privacy Vision Agent] Executing action:', payload.action);
@@ -165,14 +221,14 @@ async function handleAgentLoop(config: AgentLoopConfig, sendResponse: (response:
   try {
     console.log('[Privacy Vision Agent] Starting agent loop');
 
-    const loop = new agentLoop.constructor(config);
-    const iterations = await (loop as any).run();
+    const loop = new AgentLoop(config);
+    const iterations = await loop.run();
 
     sendResponse({
       success: true,
       data: {
         iterationCount: iterations.length,
-        stats: (loop as any).getStats(),
+        stats: loop.getStats(),
         iterations: iterations,
       },
     });

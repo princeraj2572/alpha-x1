@@ -7,17 +7,22 @@
     "tabs",
     "activeTab",
     "scripting",
-    "storage"
+    "storage",
+    "sidePanel"
   ],
   "host_permissions": [
     "<all_urls>"
   ],
   "background": {
-    "service_worker": "js/background.js"
+    "service_worker": "js/background.js",
+    "type": "module"
   },
   "action": {
     "default_title": "Privacy Vision Agent",
     "default_popup": "popup.html"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
   },
   "content_scripts": [
     {
@@ -28,7 +33,7 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["js/*.js"],
+      "resources": ["js/*", "models/*", "tesseract/*", "tesseract/lang/*"],
       "matches": ["<all_urls>"]
     }
   ]
