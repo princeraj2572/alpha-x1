@@ -9,10 +9,19 @@ FastAPI application for:
 """
 
 import logging
+from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import os
+from dotenv import load_dotenv
+
+# Load backend/.env into the process environment BEFORE anything below reads
+# os.getenv(...). python-dotenv was listed as a dependency but never actually
+# invoked — AI_PROVIDER / OPENAI_API_KEY / ANTHROPIC_API_KEY / OPENAI_MODEL in
+# .env had no effect at runtime; every provider selection silently fell back
+# to its hardcoded default (Claude/Anthropic) regardless of .env's contents.
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 from .api import health, websocket_handler, reasoning
 from .services.reasoning import ReasoningService
