@@ -109,6 +109,18 @@ export interface ActionValidationState {
   reason?: string;
 }
 
+/**
+ * A dangerous cloud action (navigate/finish — see ActionPolicyValidator)
+ * waiting on the user's explicit approval before it executes (DECISION-029).
+ */
+export interface PendingCloudAction {
+  id: string;
+  actionType: string;
+  targetLabel?: string | null;
+  reason?: string | null;
+  riskLevel?: string | null;
+}
+
 export interface ExecutionState {
   status: 'idle' | 'executing' | 'done' | 'failed';
   success?: boolean;
@@ -156,6 +168,7 @@ export interface AgentState {
 
   cloud: CloudDecisionState;
   actionValidation: ActionValidationState;
+  pendingCloudAction: PendingCloudAction | null;
   execution: ExecutionState;
 
   error: string | null;
