@@ -8,6 +8,7 @@ import { wsClient, Message } from '@/communication/websocket-client';
 import { killSwitch } from '@/security/kill-switch';
 import { ActionPolicyValidator } from '@/security/action-policy';
 import { validateSanitizedContext } from '@/ui/state/outbound';
+import { ConfirmationGate } from './confirmation-gate';
 
 console.log('[Privacy Vision Agent] Background service worker loaded');
 
@@ -101,6 +102,17 @@ wsClient.onMessage('error', (msg: Message) => {
 });
 
 /**
+ * Dangerous cloud actions (navigate/finish — see ActionPolicyValidator) wait
+ * here for the user's explicit approve/reject from the side panel before
+ * `handleBackendAction` proceeds to execute them (DECISION-029). Before this,
+ * `requiresConfirmation` was computed and displayed but never actually
+ * gated anything — execution went ahead regardless.
+ */
+const confirmationGate = new ConfirmationGate(undefined, (id, details) => {
+  emitAgentEvent('pendingConfirmation', { id, ...details });
+});
+
+/**
  * Handle action from backend
  */
 async function handleBackendAction(msg: Message): Promise<void> {
@@ -131,17 +143,45 @@ async function handleBackendAction(msg: Message): Promise<void> {
       value: p.value as string | number | undefined,
       url: p.url as string | undefined,
     });
+    const actionSummary = `${actionType} → ${p.target_id ?? ''}`;
     emitAgentEvent('actionValidation', {
-      status: policy.valid ? 'approved' : 'blocked',
+      status: !policy.valid ? 'blocked' : policy.requiresConfirmation ? 'checking' : 'approved',
       riskLevel: policy.riskLevel,
       requiresConfirmation: policy.requiresConfirmation,
       reason: policy.reason ?? null,
-      actionSummary: `${actionType} → ${p.target_id ?? ''}`,
+      actionSummary,
       schemaValid: true,
     });
     if (!policy.valid) {
       await wsClient.send('action_result', { message_id: msg.message_id, success: false, error: policy.reason }).catch(() => {});
       return;
+    }
+
+    // Dangerous actions (navigate/finish) wait for explicit user approval
+    // before proceeding — see confirmationGate above.
+    if (policy.requiresConfirmation) {
+      const approved = await confirmationGate.request(msg.message_id, {
+        actionType,
+        targetLabel: p.target_id ?? p.target ?? null,
+        reason: p.reason ?? null,
+        riskLevel: policy.riskLevel,
+      });
+      if (!approved) {
+        emitAgentEvent('actionValidation', {
+          status: 'blocked',
+          reason: 'rejected by user (confirmation required)',
+          actionSummary,
+        });
+        await wsClient
+          .send('action_result', {
+            message_id: msg.message_id,
+            success: false,
+            error: 'rejected by user (confirmation required)',
+          })
+          .catch(() => {});
+        return;
+      }
+      emitAgentEvent('actionValidation', { status: 'approved', actionSummary, reason: 'confirmed by user' });
     }
 
     const tab = await getActiveTab();
@@ -319,12 +359,16 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
     if (!killSwitch.isActive()) {
       killSwitch.activate('user stop from side panel');
     }
+    confirmationGate.rejectAll();
     emitAgentEvent('stopped', { reason: 'user stop' });
     sendResponse({ ok: true });
   } else if (request.action === 'resumeAgent') {
     if (killSwitch.isActive()) {
       killSwitch.deactivate();
     }
+    sendResponse({ ok: true });
+  } else if (request.action === 'confirmCloudAction') {
+    confirmationGate.resolve(String(request.id), Boolean(request.approved));
     sendResponse({ ok: true });
   }
 });

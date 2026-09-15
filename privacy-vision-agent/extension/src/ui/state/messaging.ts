@@ -160,11 +160,25 @@ export async function resumeAgent(): Promise<void> {
   }
 }
 
+/** Answers a pending dangerous-cloud-action confirmation (DECISION-029). */
+export async function confirmCloudAction(id: string, approved: boolean): Promise<void> {
+  if (hasChrome()) {
+    await chrome.runtime.sendMessage({ action: 'confirmCloudAction', id, approved });
+  }
+}
+
 /* ---- events pushed from the background to the panel ---- */
 
 export interface AgentEvent {
   type: 'agentEvent';
-  kind: 'cloudAction' | 'actionValidation' | 'execution' | 'backendStatus' | 'stopped' | 'backendError';
+  kind:
+    | 'cloudAction'
+    | 'actionValidation'
+    | 'execution'
+    | 'backendStatus'
+    | 'stopped'
+    | 'backendError'
+    | 'pendingConfirmation';
   payload: Record<string, unknown>;
   at: number;
 }

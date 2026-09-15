@@ -51,6 +51,7 @@ function initialState(): AgentState {
     sent: false,
     cloud: { status: 'idle' },
     actionValidation: { status: 'idle', checks: {} },
+    pendingCloudAction: null,
     execution: { status: 'idle' },
     error: null,
     backendConnected: false,
@@ -193,6 +194,10 @@ class AgentStore {
 
   setActionValidation(patch: Partial<AgentState['actionValidation']>) {
     this.set({ actionValidation: { ...this.state.actionValidation, ...patch } });
+  }
+
+  setPendingCloudAction(pendingCloudAction: AgentState['pendingCloudAction']) {
+    this.set({ pendingCloudAction });
   }
 
   setExecution(patch: Partial<AgentState['execution']>) {
