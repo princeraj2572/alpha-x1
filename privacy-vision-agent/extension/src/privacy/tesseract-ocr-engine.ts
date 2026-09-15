@@ -22,6 +22,16 @@ import { withTimeout } from './async-utils';
  * stall, not ordinary load time. */
 const WORKER_INIT_TIMEOUT_MS = 20_000;
 
+/** Character set for the digit-recovery pass (see `recoverDigitLikeRegions`). */
+const DIGIT_WHITELIST = '0123456789 -';
+
+/** Minimum digit count for a digit-pass line to be worth recovering. Below
+ * this, expiry dates ("12/20") and other short numbers would generate a
+ * recovery candidate on every capture; every sensitive numeric type this
+ * pipeline detects (phone, SSN, PAN's numeric run, Aadhaar, card) is at or
+ * above this length. */
+const MIN_RECOVERY_DIGITS = 8;
+
 export interface TesseractEngineConfig {
   /** URL to tesseract.js's worker.min.js, served from the extension origin. */
   workerPath: string;
@@ -55,6 +65,7 @@ interface TesseractWorker {
   ): Promise<{
     data: { blocks: Array<{ paragraphs: Array<{ lines: TesseractLine[] }> }> | null };
   }>;
+  setParameters(params: Record<string, unknown>): Promise<unknown>;
   terminate(): Promise<unknown>;
 }
 interface TesseractModule {
@@ -102,24 +113,99 @@ export class TesseractOcrEngine implements OcrEngine {
     // zero findings and zero bounding boxes, since block/paragraph/line
     // structure is what this engine reads to build `OcrRegion`s.
     const { data } = await worker.recognize(image, {}, { blocks: true, text: true });
-    const regions: OcrRegion[] = [];
+    const lines = this.extractLines(data);
+    const regions: OcrRegion[] = lines
+      .filter((l) => l.confidenceRaw >= this.config.minConfidence)
+      .map((l) => ({ text: l.text, bbox: l.bbox, confidence: Math.round(l.confidenceRaw) / 100, origin: 'tesseract' }));
+
+    const digitRegions = await this.recoverDigitLikeRegions(worker, image, regions);
+    return [...regions, ...digitRegions];
+  }
+
+  /**
+   * Second OCR pass restricted to digits/space/dash, layered on top of the
+   * normal pass rather than replacing it.
+   *
+   * Tesseract's general-purpose English model frequently mangles
+   * embossed/stylized card fonts badly enough that no PII regex can ever
+   * match the first pass's text — confirmed live against a real credit card
+   * screenshot: "5678" came back as "Sb1I8", "9010" as "90.0". A digit-only
+   * whitelist reads the SAME pixels far more accurately (though still not
+   * perfectly) because it can't misread a digit as a letter or symbol.
+   * That's enough: this pipeline's job is recognizing "this is a card/ID-
+   * shaped number" so it gets redacted, not transcribing it correctly.
+   *
+   * Two guards keep this from adding noise:
+   * - `MIN_RECOVERY_DIGITS`: short digit runs (dates, quantities) are
+   *   ignored — every sensitive numeric type this pipeline looks for is
+   *   longer.
+   * - Only lines overlapping a bbox the NORMAL pass already found text in
+   *   are kept, so a digit-only pass latching onto background texture noise
+   *   can't invent findings the first pass saw nothing at all in.
+   *
+   * Never throws: a failure here degrades to "no recovery", not a broken
+   * OCR result — see the outer `recognize()`, which still returns the
+   * normal-pass regions either way.
+   */
+  private async recoverDigitLikeRegions(
+    worker: TesseractWorker,
+    image: unknown,
+    normalRegions: OcrRegion[]
+  ): Promise<OcrRegion[]> {
+    try {
+      await worker.setParameters({ tessedit_char_whitelist: DIGIT_WHITELIST });
+      const { data } = await worker.recognize(image, {}, { blocks: true, text: true });
+      const digitLines = this.extractLines(data);
+
+      const recovered: OcrRegion[] = [];
+      for (const line of digitLines) {
+        const digitCount = (line.text.match(/\d/g) ?? []).length;
+        if (digitCount < MIN_RECOVERY_DIGITS) {
+          continue;
+        }
+        if (!normalRegions.some((r) => bboxesOverlap(r.bbox, line.bbox))) {
+          continue;
+        }
+        recovered.push({
+          text: line.text,
+          bbox: line.bbox,
+          // Tesseract's own confidence metric is unreliable under a
+          // restricted whitelist — observed returning 0 even for an
+          // accurate read, live, against the same card image quoted above.
+          // A fixed moderate value stands in: this is a recovery candidate
+          // for the regex engine to judge, not a verified read.
+          confidence: 0.5,
+          origin: 'tesseract-digits',
+        });
+      }
+      return recovered;
+    } catch (err) {
+      console.warn('[TesseractOcrEngine] digit-recovery pass failed, continuing without it:', err);
+      return [];
+    } finally {
+      // This worker is cached and reused for every future recognize() call
+      // (see getWorker()) — never leave it whitelist-restricted for the next
+      // caller's normal-text pass.
+      await worker.setParameters({ tessedit_char_whitelist: '' }).catch(() => {});
+    }
+  }
+
+  private extractLines(data: {
+    blocks: Array<{ paragraphs: Array<{ lines: TesseractLine[] }> }> | null;
+  }): Array<{ text: string; confidenceRaw: number; bbox: BoundingBox }> {
+    const out: Array<{ text: string; confidenceRaw: number; bbox: BoundingBox }> = [];
     for (const block of data.blocks ?? []) {
       for (const paragraph of block.paragraphs) {
         for (const line of paragraph.lines) {
           const text = line.text.trim();
-          if (text.length < 3 || line.confidence < this.config.minConfidence) {
+          if (text.length < 3) {
             continue;
           }
-          regions.push({
-            text,
-            bbox: bboxFrom(line.bbox),
-            confidence: Math.round(line.confidence) / 100,
-            origin: 'tesseract',
-          });
+          out.push({ text, confidenceRaw: line.confidence, bbox: bboxFrom(line.bbox) });
         }
       }
     }
-    return regions;
+    return out;
   }
 
   /** Release the worker. Call when the panel session ends, if ever needed. */
@@ -183,6 +269,10 @@ export class TesseractOcrEngine implements OcrEngine {
 
 function bboxFrom(b: TesseractBbox): BoundingBox {
   return { x: b.x0, y: b.y0, width: b.x1 - b.x0, height: b.y1 - b.y0 };
+}
+
+function bboxesOverlap(a: BoundingBox, b: BoundingBox): boolean {
+  return a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
 }
 
 /** Map our generic OcrSource to whatever Tesseract's ImageLike expects. */
