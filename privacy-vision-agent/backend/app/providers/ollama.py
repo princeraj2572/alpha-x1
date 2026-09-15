@@ -8,6 +8,7 @@ llama3.2-vision, qwen2.5vl, ...) accept images directly on the chat message,
 so the model interprets the redacted screenshot rather than DOM text alone.
 """
 
+import asyncio
 import base64
 import json
 import logging
@@ -18,6 +19,13 @@ import httpx
 from .base import BaseProvider, ReasoningRequest, ActionResponse
 
 logger = logging.getLogger(__name__)
+
+# A cold model load (nothing resident in Ollama's memory yet) can 500 or time
+# out on the very first request after the server has been idle — observed
+# live, succeeded immediately on retry (DECISION-026 known limitations).
+# Retried; a 4xx (bad request/model) is not, since retrying won't fix it.
+MAX_RETRIES = 2
+RETRY_BACKOFF_BASE_SECONDS = 1.0
 
 SYSTEM_PROMPT = """You are a browser automation agent. You are shown a sanitized \
 screenshot of the current page (faces blurred, sensitive text blacked out) plus its \
@@ -188,12 +196,29 @@ class OllamaProvider(BaseProvider):
             "options": {"temperature": 0.2},
         }
 
-        # Local vision inference can be slow without a GPU — generous timeout.
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            response = await client.post(f"{self.base_url}/api/chat", json=payload)
-            response.raise_for_status()
-            data = response.json()
-            return data["message"]["content"]
+        for attempt in range(MAX_RETRIES + 1):
+            try:
+                # Local vision inference can be slow without a GPU — generous timeout.
+                async with httpx.AsyncClient(timeout=120.0) as client:
+                    response = await client.post(f"{self.base_url}/api/chat", json=payload)
+                    response.raise_for_status()
+                    data = response.json()
+                    return data["message"]["content"]
+            except (httpx.TimeoutException, httpx.HTTPStatusError) as e:
+                is_retryable = isinstance(e, httpx.TimeoutException) or (
+                    isinstance(e, httpx.HTTPStatusError) and e.response.status_code >= 500
+                )
+                if not is_retryable or attempt == MAX_RETRIES:
+                    raise
+                delay = RETRY_BACKOFF_BASE_SECONDS * (2**attempt)
+                logger.warning(
+                    f"[Ollama Provider] Transient error on attempt {attempt + 1}/{MAX_RETRIES + 1}"
+                    f" ({e}) — retrying in {delay:.0f}s"
+                )
+                await asyncio.sleep(delay)
+
+        # Unreachable: the loop above always either returns or raises.
+        raise AssertionError("unreachable")
 
     def _parse_action(self, response_text: str) -> ActionResponse:
         try:

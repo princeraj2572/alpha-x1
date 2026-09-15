@@ -109,6 +109,11 @@ export function App() {
         }
       } else if (e.kind === 'stopped') {
         markStopped('backend');
+      } else if (e.kind === 'backendError') {
+        const p = e.payload as Record<string, unknown>;
+        const message = String(p.message ?? 'Backend error');
+        agentStore.setError(message);
+        agentStore.addEvent(message, 'error');
       }
     });
 

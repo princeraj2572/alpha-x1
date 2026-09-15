@@ -10,7 +10,7 @@ from datetime import datetime
 from uuid import uuid4
 import logging
 
-from ..services.session import SessionManager
+from ..services.session import SessionManager, CONSECUTIVE_FAILURE_WARNING_THRESHOLD
 from ..services.action_validator import ActionValidator
 from ..schemas.messages import MessageEnvelope, ErrorPayload
 
@@ -95,35 +95,70 @@ async def handle_context_message(
 
         logger.info(f"[Context Handler] Received context from {session_id}")
 
+        # The extension doesn't track/send action history itself (nothing
+        # populates it as of DECISION-014) — fall back to what THIS server
+        # tracked from action_result messages, so the model still has memory
+        # of what it already tried and whether it worked.
+        history = payload.get("history") or session_manager.get_action_history(session_id)
+
         # Call reasoning service to get next action
         action = await reasoning_service.reason_about_action(
             context=payload.get("context", {}),
             task=payload.get("task"),
-            history=payload.get("history", []),
+            history=history,
         )
 
-        # Send action back to extension
+        action_payload = {
+            "action_type": action.action_type,
+            "target_id": action.target_id,
+            "value": action.value,
+            "option": action.option,
+            "direction": action.direction,
+            "amount": action.amount,
+            "duration_ms": action.duration_ms,
+            "url": action.url,
+            "confidence": action.confidence,
+            "reason": action.reason,
+        }
+
+        # Validate what the model produced BEFORE it ever reaches the
+        # extension — action_validator existed but, before this, was only
+        # ever exercised by the manual /actions/send-test endpoint, never by
+        # the real reasoning path. A malformed action (missing target_id, a
+        # disallowed URL scheme, ...) now gets swapped for a safe no-op
+        # instead of being shipped to the browser.
+        is_valid, validation_error = action_validator.validate(
+            {"action": action.action_type, **action_payload}
+        )
+        if not is_valid:
+            logger.warning(
+                f"[Context Handler] Reasoning produced an invalid action, "
+                f"substituting a safe wait: {validation_error}"
+            )
+            action_payload = {
+                "action_type": "wait",
+                "target_id": None,
+                "value": None,
+                "option": None,
+                "direction": None,
+                "amount": None,
+                "duration_ms": 1000,
+                "url": None,
+                "confidence": 0.0,
+                "reason": f"Rejected invalid action from model: {validation_error}",
+            }
+
         action_message = MessageEnvelope(
             session_id=session_id,
             message_id=str(uuid4()),
             type="action",
             timestamp=datetime.utcnow(),
-            payload={
-                "action_type": action.action_type,
-                "target_id": action.target_id,
-                "value": action.value,
-                "option": action.option,
-                "direction": action.direction,
-                "amount": action.amount,
-                "duration_ms": action.duration_ms,
-                "url": action.url,
-                "confidence": action.confidence,
-                "reason": action.reason,
-            },
+            payload=action_payload,
         )
 
+        session_manager.record_sent_action(session_id, action_message.message_id, action_payload)
         await send_message(websocket, action_message)
-        logger.info(f"[Context Handler] Sent action to extension: {action.action_type}")
+        logger.info(f"[Context Handler] Sent action to extension: {action_payload['action_type']}")
 
     except Exception as e:
         logger.error(f"[Context Handler] Error: {e}")
@@ -247,6 +282,37 @@ async def websocket_endpoint(
                     await handle_context_message(
                         websocket, session_id, incoming, app
                     )
+                elif incoming.type == "action_result":
+                    # Close the loop (DECISION-014): before this, action_result
+                    # was received and immediately discarded — echoed back as a
+                    # generic acknowledgment with no effect on anything. Now it
+                    # joins the session's action history (used above to give
+                    # the model memory of what it already tried) and tracks
+                    # consecutive failures so a stuck agent can be surfaced
+                    # instead of silently retrying forever.
+                    session = session_manager.record_action_result(
+                        session_id, incoming.payload.get("message_id"), incoming.payload
+                    )
+                    logger.info(
+                        f"[Action Result] session={session_id} "
+                        f"success={incoming.payload.get('success')} "
+                        f"consecutive_failures={session.consecutive_failures if session else '?'}"
+                    )
+                    if session and session.consecutive_failures >= CONSECUTIVE_FAILURE_WARNING_THRESHOLD:
+                        stuck_msg = MessageEnvelope(
+                            session_id=session_id,
+                            message_id=str(uuid4()),
+                            type="error",
+                            timestamp=datetime.utcnow(),
+                            payload={
+                                "error_code": "REPEATED_ACTION_FAILURE",
+                                "message": (
+                                    f"{session.consecutive_failures} consecutive action "
+                                    "failures — the agent may be stuck."
+                                ),
+                            },
+                        )
+                        await send_message(websocket, stuck_msg)
                 else:
                     # Echo back for acknowledgment
                     echo = MessageEnvelope(
