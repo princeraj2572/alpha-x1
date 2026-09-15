@@ -87,6 +87,19 @@ wsClient.onMessage('action', (msg: Message) => {
   handleBackendAction(msg).catch(console.error);
 });
 
+// Backend errors (reasoning failures, DECISION-014's repeated-action-failure
+// warning, ...) arrived over the socket but had no handler at all before
+// this — silently dropped, invisible to the user. Surface them the same way
+// every other backend signal reaches the panel.
+wsClient.onMessage('error', (msg: Message) => {
+  const p = msg.payload as Record<string, unknown>;
+  console.error('[Privacy Vision Agent] Backend reported an error:', p);
+  emitAgentEvent('backendError', {
+    errorCode: p.error_code ?? null,
+    message: p.message ?? 'Unknown backend error',
+  });
+});
+
 /**
  * Handle action from backend
  */

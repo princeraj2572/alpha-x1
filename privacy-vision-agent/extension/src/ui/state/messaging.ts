@@ -164,7 +164,7 @@ export async function resumeAgent(): Promise<void> {
 
 export interface AgentEvent {
   type: 'agentEvent';
-  kind: 'cloudAction' | 'actionValidation' | 'execution' | 'backendStatus' | 'stopped';
+  kind: 'cloudAction' | 'actionValidation' | 'execution' | 'backendStatus' | 'stopped' | 'backendError';
   payload: Record<string, unknown>;
   at: number;
 }
