@@ -272,7 +272,13 @@ export class RegexDetector {
     if (!text) {
       return [];
     }
-    const minConfidence = opts.minConfidence ?? 0.5;
+    // 0.4, not 0.5: matches detection-fusion.ts's own default minConfidence.
+    // A stricter pre-filter here than fusion's own threshold would silently
+    // discard findings fusion's fail-closed policy was designed to keep —
+    // concretely, credit-card's deliberate Luhn-invalid fallback score of
+    // 0.4 (still worth surfacing as "card-shaped", see the rule's own
+    // comment) never used to reach fusion at all.
+    const minConfidence = opts.minConfidence ?? 0.4;
     const raw: PrivacyFinding[] = [];
 
     for (const rule of this.registry.list()) {
@@ -334,7 +340,16 @@ export class RegexDetector {
 
   /**
    * When several findings cover the same or overlapping spans, keep the
-   * single most confident one (ties broken by longer match).
+   * single most confident one (ties broken by longer match) — UNLESS one
+   * match's span fully contains the other's, in which case completeness
+   * wins outright regardless of confidence. Without that exception, a
+   * 16-digit card number whose first 12 digits happen to also satisfy the
+   * (shorter, unrelated) Aadhaar-shaped pattern could lose to that
+   * coincidental sub-match purely because a Luhn-invalid card scores lower
+   * (0.4) than a Verhoeff-invalid Aadhaar guess (0.55) — silently
+   * truncating the real finding to 12 of its 16 digits and mislabeling it,
+   * discovered by live-testing OCR'd card-shaped text through this exact
+   * pipeline.
    */
   private dedupeBySpan(findings: PrivacyFinding[]): PrivacyFinding[] {
     const sorted = [...findings].sort((a, b) => {
@@ -357,8 +372,20 @@ export class RegexDetector {
         kept.push(f);
         continue;
       }
-      const clashLen = clash.textSpan![1] - clash.textSpan![0];
+      const [cs, ce] = clash.textSpan!;
+      const clashLen = ce - cs;
       const fLen = fe - fs;
+
+      if (fLen !== clashLen && fs <= cs && fe >= ce) {
+        // f strictly contains clash — the more complete match wins outright.
+        kept[kept.indexOf(clash)] = f;
+        continue;
+      }
+      if (fLen !== clashLen && cs <= fs && ce >= fe) {
+        // clash strictly contains f — keep clash, f contributes nothing new.
+        continue;
+      }
+
       if (
         f.confidence > clash.confidence ||
         (f.confidence === clash.confidence && fLen > clashLen)
