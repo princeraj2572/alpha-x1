@@ -5,17 +5,20 @@
 
 import { PrivacyEvaluator } from './privacy-evaluator';
 import { VisualEvaluator } from './visual-evaluator';
-import { MetricsCollector } from './metrics-collector';
+import { MetricsCollector, EvaluationReport } from './metrics-collector';
+
+type PrivacySummary = ReturnType<typeof PrivacyEvaluator.evaluateSummary>;
+type VisualSummary = Awaited<ReturnType<typeof VisualEvaluator.evaluateSummary>>;
 
 export interface BenchmarkReport {
   timestamp: string;
   sessionId: string;
   sihMetrics: {
-    visualContextAccuracy: any;
-    piiDetectionAccuracy: any;
-    redactionPrecision: any;
-    clientResourceUsage: any;
-    endToEndLatency: any;
+    visualContextAccuracy: VisualSummary;
+    piiDetectionAccuracy: PrivacySummary['piiDetection'];
+    redactionPrecision: PrivacySummary['redaction'];
+    clientResourceUsage: ReturnType<typeof BenchmarkRunner.evaluateResources>;
+    endToEndLatency: ReturnType<typeof BenchmarkRunner.evaluateLatency>;
   };
   summary: {
     totalTestsPassed: number;
@@ -95,7 +98,7 @@ export class BenchmarkRunner {
    * that genuinely ARE measured, with no pass/fail threshold invented for
    * numbers that aren't backed by real budgets.
    */
-  static evaluateResources(metricsReport: any) {
+  static evaluateResources(metricsReport: EvaluationReport) {
     console.log('[Benchmark] Evaluating resource usage...');
 
     const dom = metricsReport.resource?.domElementsCount ?? 0;
@@ -123,7 +126,7 @@ export class BenchmarkRunner {
   /**
    * Evaluate latency metrics
    */
-  static evaluateLatency(metricsReport: any) {
+  static evaluateLatency(metricsReport: EvaluationReport) {
     console.log('[Benchmark] Evaluating latency...');
 
     const avgTotal = metricsReport.latency?.totalLatencyMs ?? 0;
@@ -171,7 +174,7 @@ export class BenchmarkRunner {
   /**
    * Count passed tests
    */
-  private static countPassedTests(results: any[]): number {
+  private static countPassedTests(results: Array<{ overall?: { allTestsPassed?: boolean } }>): number {
     let passed = 0;
 
     for (const result of results) {
