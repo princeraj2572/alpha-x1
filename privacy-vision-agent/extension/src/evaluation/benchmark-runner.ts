@@ -85,29 +85,37 @@ export class BenchmarkRunner {
   }
 
   /**
-   * Evaluate resource usage
+   * Evaluate resource usage.
+   *
+   * Memory (`performance.memory`) and CPU have NO reliable measurement path
+   * in this extension today (see metrics-collector.ts's `ResourceMetrics`
+   * comment) — reporting a synthetic pass/fail against unmeasured data would
+   * be a false-confidence result, the same failure mode DECISION-031 called
+   * out for the visual evaluator grading a stub. This reports the counts
+   * that genuinely ARE measured, with no pass/fail threshold invented for
+   * numbers that aren't backed by real budgets.
    */
-  private static evaluateResources(metricsReport: any) {
+  static evaluateResources(metricsReport: any) {
     console.log('[Benchmark] Evaluating resource usage...');
 
-    const avgMemory = metricsReport.resource?.memoryUsageMb ?? 0;
-    const avgCpu = metricsReport.resource?.cpuPercentage ?? 0;
+    const dom = metricsReport.resource?.domElementsCount ?? 0;
+    const visual = metricsReport.resource?.visualElementsCount ?? 0;
+    const redacted = metricsReport.resource?.redactedElementsCount ?? 0;
 
     return {
       title: 'Client Resource Usage',
       timestamp: new Date().toISOString(),
-      memory: {
-        passed: avgMemory < 100,
-        averageMemoryMb: avgMemory.toFixed(2),
-        category: avgMemory < 50 ? 'excellent' : avgMemory < 100 ? 'good' : 'high',
-      },
-      cpu: {
-        passed: avgCpu < 30,
-        averageCpuPercentage: avgCpu.toFixed(1),
-        category: avgCpu < 10 ? 'excellent' : avgCpu < 30 ? 'good' : 'high',
+      note: 'Memory/CPU are not measured (no reliable in-extension API) — element counts only.',
+      elementCounts: {
+        averageDomElements: dom.toFixed(1),
+        averageVisualElements: visual.toFixed(1),
+        averageRedactedElements: redacted.toFixed(1),
       },
       overall: {
-        allTestsPassed: avgMemory < 100 && avgCpu < 30,
+        // Nothing here is a real budget check — always "true" (measured, not
+        // graded) so this category doesn't silently fail a report that has
+        // no actual resource data to fail on.
+        allTestsPassed: true,
       },
     };
   }
@@ -115,33 +123,36 @@ export class BenchmarkRunner {
   /**
    * Evaluate latency metrics
    */
-  private static evaluateLatency(metricsReport: any) {
+  static evaluateLatency(metricsReport: any) {
     console.log('[Benchmark] Evaluating latency...');
 
-    const avgIterationTime = metricsReport.latency?.iterationTotalMs ?? 0;
-    const avgEndToEnd = metricsReport.latency?.endToEndMs ?? 0;
+    const avgTotal = metricsReport.latency?.totalLatencyMs ?? 0;
+    const avgNetwork = metricsReport.latency?.networkLatencyMs ?? 0;
+    const avgCloud = metricsReport.latency?.cloudLatencyMs ?? 0;
+    const avgEndToEnd = avgTotal + avgNetwork + avgCloud;
 
     return {
       title: 'End-to-End Latency',
       timestamp: new Date().toISOString(),
       perIteration: {
-        averageTimeMs: avgIterationTime.toFixed(2),
-        category: this.categorizeLatency(avgIterationTime),
+        averageTimeMs: avgTotal.toFixed(2),
+        category: this.categorizeLatency(avgTotal),
         breakdown: {
-          observeMs: (metricsReport.latency?.phaseObserveMs ?? 0).toFixed(2),
-          sanitizeMs: (metricsReport.latency?.phaseSanitizeMs ?? 0).toFixed(2),
-          reasonMs: (metricsReport.latency?.phaseReasonMs ?? 0).toFixed(2),
-          validateMs: (metricsReport.latency?.phaseValidateMs ?? 0).toFixed(2),
-          executeMs: (metricsReport.latency?.phaseExecuteMs ?? 0).toFixed(2),
-          detectMs: (metricsReport.latency?.phaseDetectMs ?? 0).toFixed(2),
+          domAnalysisMs: (metricsReport.latency?.domAnalysisMs ?? 0).toFixed(2),
+          piiDetectionMs: (metricsReport.latency?.piiDetectionMs ?? 0).toFixed(2),
+          visionInferenceMs: (metricsReport.latency?.visionInferenceMs ?? 0).toFixed(2),
+          fusionMs: (metricsReport.latency?.fusionMs ?? 0).toFixed(2),
+          redactionMs: (metricsReport.latency?.redactionMs ?? 0).toFixed(2),
         },
       },
       endToEnd: {
+        // Local pipeline (totalLatencyMs) + wire time + cloud reasoning time,
+        // since no single measured field spans capture through action receipt.
         averageTimeMs: avgEndToEnd.toFixed(2),
         category: this.categorizeLatency(avgEndToEnd),
       },
       overall: {
-        allTestsPassed: avgIterationTime < 5000 && avgEndToEnd < 30000,
+        allTestsPassed: avgTotal < 5000 && avgEndToEnd < 30000,
       },
     };
   }
@@ -217,11 +228,10 @@ export class BenchmarkRunner {
     lines.push(`\n${'-'.repeat(60)}`);
     lines.push('SIH METRIC 4: Client Resource Usage');
     lines.push(`${'-'.repeat(60)}`);
-    lines.push(`Memory: ${report.sihMetrics.clientResourceUsage?.memory?.averageMemoryMb} MB`);
-    lines.push(`CPU: ${report.sihMetrics.clientResourceUsage?.cpu?.averageCpuPercentage}%`);
-    lines.push(
-      `Status: ${report.sihMetrics.clientResourceUsage?.overall?.allTestsPassed ? 'PASS' : 'FAIL'}`
-    );
+    lines.push(`(${report.sihMetrics.clientResourceUsage?.note ?? ''})`);
+    lines.push(`Avg DOM elements: ${report.sihMetrics.clientResourceUsage?.elementCounts?.averageDomElements}`);
+    lines.push(`Avg visual elements: ${report.sihMetrics.clientResourceUsage?.elementCounts?.averageVisualElements}`);
+    lines.push(`Avg redacted elements: ${report.sihMetrics.clientResourceUsage?.elementCounts?.averageRedactedElements}`);
 
     lines.push(`\n${'-'.repeat(60)}`);
     lines.push('SIH METRIC 5: End-to-End Latency');
