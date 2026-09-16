@@ -6,7 +6,7 @@ import json
 import os
 import asyncio
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import uuid4
 import logging
 
@@ -54,10 +54,10 @@ async def send_heartbeat(session_id: str) -> bool:
         session_id=session_id,
         message_id=str(uuid4()),
         type="heartbeat",
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(timezone.utc),
         payload={
             "sequence": sequence,
-            "server_timestamp": datetime.utcnow().isoformat(),
+            "server_timestamp": datetime.now(timezone.utc).isoformat(),
         },
     )
 
@@ -152,7 +152,7 @@ async def handle_context_message(
             session_id=session_id,
             message_id=str(uuid4()),
             type="action",
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             payload=action_payload,
         )
 
@@ -166,7 +166,7 @@ async def handle_context_message(
             session_id=session_id,
             message_id=str(uuid4()),
             type="error",
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             payload={
                 "error_code": "REASONING_FAILED",
                 "message": str(e),
@@ -219,11 +219,11 @@ async def websocket_endpoint(
             session_id=session_id,
             message_id=str(uuid4()),
             type="heartbeat",
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             payload={
                 "message": "Connected to Privacy Vision Agent Backend",
                 "session_id": session_id,
-                "server_timestamp": datetime.utcnow().isoformat(),
+                "server_timestamp": datetime.now(timezone.utc).isoformat(),
                 "provider": provider,
                 "model": model,
             },
@@ -245,7 +245,7 @@ async def websocket_endpoint(
                         session_id=session_id,
                         message_id=str(uuid4()),
                         type="error",
-                        timestamp=datetime.utcnow(),
+                        timestamp=datetime.now(timezone.utc),
                         payload={
                             "error_code": "INVALID_JSON",
                             "message": str(e),
@@ -263,7 +263,7 @@ async def websocket_endpoint(
                         session_id=session_id,
                         message_id=str(uuid4()),
                         type="error",
-                        timestamp=datetime.utcnow(),
+                        timestamp=datetime.now(timezone.utc),
                         payload={
                             "error_code": "INVALID_SESSION",
                             "message": "Session ID mismatch",
@@ -303,7 +303,7 @@ async def websocket_endpoint(
                             session_id=session_id,
                             message_id=str(uuid4()),
                             type="error",
-                            timestamp=datetime.utcnow(),
+                            timestamp=datetime.now(timezone.utc),
                             payload={
                                 "error_code": "REPEATED_ACTION_FAILURE",
                                 "message": (
@@ -319,11 +319,11 @@ async def websocket_endpoint(
                         session_id=session_id,
                         message_id=str(uuid4()),
                         type="heartbeat",
-                        timestamp=datetime.utcnow(),
+                        timestamp=datetime.now(timezone.utc),
                         payload={
                             "received_message_id": incoming.message_id,
                             "received_type": incoming.type,
-                            "server_timestamp": datetime.utcnow().isoformat(),
+                            "server_timestamp": datetime.now(timezone.utc).isoformat(),
                         },
                     )
                     await send_message(websocket, echo)
@@ -351,7 +351,7 @@ async def get_session_stats():
     """Get current session statistics"""
     return {
         "stats": session_manager.get_stats(),
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "active_connections": len(active_connections),
     }
 
@@ -373,7 +373,7 @@ async def send_test_action(session_id: str, action: dict):
         session_id=session_id,
         message_id=str(uuid4()),
         type="action",
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(timezone.utc),
         payload={"action": action},
     )
 

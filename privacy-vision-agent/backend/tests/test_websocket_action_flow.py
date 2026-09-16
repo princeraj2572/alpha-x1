@@ -5,7 +5,7 @@ fake websocket + fake reasoning service rather than a real WS connection.
 """
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -27,7 +27,7 @@ def _make_incoming(session_id: str, payload: dict) -> MessageEnvelope:
         session_id=session_id,
         message_id=str(uuid4()),
         type="context",
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(timezone.utc),
         payload=payload,
     )
 

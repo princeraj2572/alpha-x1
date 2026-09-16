@@ -3,7 +3,7 @@ Session management for extension connections
 """
 
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from dataclasses import dataclass, field
 
@@ -36,12 +36,12 @@ class SessionData:
     @property
     def age_seconds(self) -> float:
         """Session age in seconds"""
-        return (datetime.utcnow() - self.created_at).total_seconds()
+        return (datetime.now(timezone.utc) - self.created_at).total_seconds()
 
     @property
     def is_stale(self, timeout_seconds: int = 300) -> bool:
         """Check if session has no recent heartbeat (5 min default)"""
-        return (datetime.utcnow() - self.last_heartbeat).total_seconds() > timeout_seconds
+        return (datetime.now(timezone.utc) - self.last_heartbeat).total_seconds() > timeout_seconds
 
 
 class SessionManager:
@@ -54,7 +54,7 @@ class SessionManager:
     def create_session(self) -> str:
         """Create a new session"""
         session_id = str(uuid.uuid4())
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         self.sessions[session_id] = SessionData(
             session_id=session_id,
             created_at=now,
@@ -78,7 +78,7 @@ class SessionManager:
         session = self.get_session(session_id)
         if not session:
             return False
-        session.last_heartbeat = datetime.utcnow()
+        session.last_heartbeat = datetime.now(timezone.utc)
         session.heartbeat_count += 1
         return True
 
@@ -88,7 +88,7 @@ class SessionManager:
         if not session:
             return False
         session.message_count += 1
-        session.last_heartbeat = datetime.utcnow()  # Reset on activity
+        session.last_heartbeat = datetime.now(timezone.utc)  # Reset on activity
         return True
 
     def record_sent_action(self, session_id: str, message_id: str, action: dict) -> None:
@@ -144,7 +144,7 @@ class SessionManager:
 
     def cleanup_stale_sessions(self) -> list[str]:
         """Remove sessions with no recent heartbeat"""
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         stale = []
         for session_id, session in list(self.sessions.items()):
             age = (now - session.last_heartbeat).total_seconds()

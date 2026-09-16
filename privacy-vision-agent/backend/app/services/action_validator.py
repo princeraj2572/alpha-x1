@@ -60,17 +60,8 @@ class ActionValidator:
         if "target_id" not in action or not action["target_id"]:
             return False, "Type requires target_id"
 
-        has_value = "value" in action and action["value"] is not None
-        has_ref = "value_ref" in action and action["value_ref"] is not None
-
-        if not (has_value or has_ref):
-            return False, "Type requires either 'value' or 'value_ref'"
-
-        if has_value and has_ref:
-            return False, "Type cannot have both 'value' and 'value_ref'"
-
-        if has_ref and not str(action["value_ref"]).startswith("LOCAL_SECRET:"):
-            return False, "value_ref must start with 'LOCAL_SECRET:'"
+        if "value" not in action or action["value"] is None:
+            return False, "Type requires value"
 
         self.total_validated += 1
         return True, None
