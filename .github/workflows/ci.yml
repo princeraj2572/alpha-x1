@@ -41,4 +41,4 @@ jobs:
             privacy-vision-agent/backend/requirements.txt
             privacy-vision-agent/backend/requirements-dev.txt
       - run: pip install -r requirements.txt -r requirements-dev.txt
-      - run: pytest -v
+      - run: python -m pytest -v
