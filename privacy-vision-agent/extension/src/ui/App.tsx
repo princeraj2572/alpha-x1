@@ -20,6 +20,7 @@ import { ActionValidation } from './components/ActionValidation';
 import { ExecutionStatus } from './components/ExecutionStatus';
 import { SessionTimeline } from './components/SessionTimeline';
 import { MetricsPanel } from './components/MetricsPanel';
+import { SessionBenchmark } from './components/SessionBenchmark';
 
 export function App() {
   const s = useAgentStore();
@@ -242,6 +243,7 @@ export function App() {
       <ActionValidation />
       <ExecutionStatus />
       <MetricsPanel />
+      <SessionBenchmark />
       <SessionTimeline />
     </div>
   );
