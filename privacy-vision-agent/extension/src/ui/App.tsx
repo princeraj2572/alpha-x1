@@ -115,7 +115,12 @@ export function App() {
           agentStore.addEvent(`Browser action ${p.success ? 'executed' : 'failed'}`, 'execute');
         }
       } else if (e.kind === 'stopped') {
-        markStopped('backend');
+        // Was hardcoded to 'backend', discarding the real reason the
+        // background worker sent (e.g. session-timeout wiring stopped:
+        // { reason: 'Session timeout' }) — every backend-initiated stop
+        // looked identical in the event log regardless of cause.
+        const p = e.payload as Record<string, unknown>;
+        markStopped(typeof p.reason === 'string' ? p.reason : 'backend');
       } else if (e.kind === 'backendError') {
         const p = e.payload as Record<string, unknown>;
         const message = String(p.message ?? 'Backend error');

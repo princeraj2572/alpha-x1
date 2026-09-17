@@ -21,6 +21,8 @@ export interface SessionState {
   lastActivityAt: number;
   reconnectAttempts: number;
   isConnected: boolean;
+  /** Set by `terminate()` — lets subscribers distinguish an idle timeout from an explicit stop. */
+  reason?: string;
 }
 
 export class SessionManager {
@@ -185,6 +187,7 @@ export class SessionManager {
     }
 
     this.state.isActive = false;
+    this.state.reason = reason;
 
     if (this.heartbeatTimer) {
       clearInterval(this.heartbeatTimer);
