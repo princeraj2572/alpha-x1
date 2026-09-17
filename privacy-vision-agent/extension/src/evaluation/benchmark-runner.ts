@@ -6,6 +6,7 @@
 import { PrivacyEvaluator } from './privacy-evaluator';
 import { VisualEvaluator } from './visual-evaluator';
 import { MetricsCollector, EvaluationReport } from './metrics-collector';
+import { ImageLike } from '@/privacy/redactor';
 
 type PrivacySummary = ReturnType<typeof PrivacyEvaluator.evaluateSummary>;
 type VisualSummary = Awaited<ReturnType<typeof VisualEvaluator.evaluateSummary>>;
@@ -30,15 +31,23 @@ export interface BenchmarkReport {
 
 export class BenchmarkRunner {
   /**
-   * Run full evaluation suite
+   * Run full evaluation suite. `screenshot` is optional because visual
+   * accuracy genuinely cannot be measured without one — omitting it (or
+   * running where no execution provider is available, e.g. under
+   * vitest/Node) reports `measured: false` for that category rather than a
+   * fabricated pass.
    */
-  static async runFullEvaluation(metricsCollector: MetricsCollector, iterationCount: number): Promise<BenchmarkReport> {
+  static async runFullEvaluation(
+    metricsCollector: MetricsCollector,
+    iterationCount: number,
+    screenshot?: { canvas: CanvasImageSource; image: ImageLike }
+  ): Promise<BenchmarkReport> {
     console.log('[Benchmark] Starting full evaluation suite');
 
     // Evaluate each SIH metric
     const [privacyResults, visualResults] = await Promise.all([
       this.evaluatePrivacy(),
-      this.evaluateVisual(),
+      this.evaluateVisual(screenshot),
     ]);
 
     const metricsReport = metricsCollector.generateReport(iterationCount);
@@ -80,11 +89,24 @@ export class BenchmarkRunner {
   }
 
   /**
-   * Evaluate visual metrics
+   * Evaluate visual metrics. Without a screenshot there's nothing to run
+   * detection against — reports the same `measured: false` shape
+   * `VisualEvaluator` itself reports when no execution provider is
+   * available, rather than a separate error path.
    */
-  private static async evaluateVisual() {
+  private static async evaluateVisual(screenshot?: { canvas: CanvasImageSource; image: ImageLike }) {
     console.log('[Benchmark] Evaluating visual accuracy...');
-    return VisualEvaluator.evaluateSummary();
+    if (!screenshot) {
+      return {
+        title: 'Visual Accuracy Evaluation Summary',
+        timestamp: new Date().toISOString(),
+        measured: false,
+        reason: 'no screenshot provided to runFullEvaluation',
+        detection: { objectFindingsCount: 0, faceFindingsCount: 0, inferenceTimeMs: '0.00' },
+        overall: { allTestsPassed: null },
+      };
+    }
+    return VisualEvaluator.evaluateSummary(screenshot.canvas, screenshot.image);
   }
 
   /**
@@ -174,7 +196,9 @@ export class BenchmarkRunner {
   /**
    * Count passed tests
    */
-  private static countPassedTests(results: Array<{ overall?: { allTestsPassed?: boolean } }>): number {
+  private static countPassedTests(
+    results: Array<{ overall?: { allTestsPassed?: boolean | null } }>
+  ): number {
     let passed = 0;
 
     for (const result of results) {
@@ -212,13 +236,14 @@ export class BenchmarkRunner {
     lines.push(`\n${'-'.repeat(60)}`);
     lines.push('SIH METRIC 1: Visual Context Accuracy');
     lines.push(`${'-'.repeat(60)}`);
-    lines.push(`Status: ${report.sihMetrics.visualContextAccuracy.overall?.allTestsPassed ? 'PASS' : 'FAIL'}`);
-    lines.push(
-      `Detection Rate: ${report.sihMetrics.visualContextAccuracy.elementDetection?.detectionRate || 'N/A'}`
-    );
-    lines.push(
-      `Precision: ${report.sihMetrics.visualContextAccuracy.elementDetection?.precisionRate || 'N/A'}`
-    );
+    if (!report.sihMetrics.visualContextAccuracy.measured) {
+      lines.push(`NOT MEASURED: ${report.sihMetrics.visualContextAccuracy.reason ?? 'unknown reason'}`);
+    } else {
+      lines.push(`Status: ${report.sihMetrics.visualContextAccuracy.overall?.allTestsPassed ? 'PASS' : 'FAIL'}`);
+      lines.push(`Object findings: ${report.sihMetrics.visualContextAccuracy.detection?.objectFindingsCount}`);
+      lines.push(`Face findings: ${report.sihMetrics.visualContextAccuracy.detection?.faceFindingsCount}`);
+      lines.push(`Inference time: ${report.sihMetrics.visualContextAccuracy.detection?.inferenceTimeMs} ms`);
+    }
 
     lines.push(`\n${'-'.repeat(60)}`);
     lines.push('SIH METRIC 2 & 3: PII Detection & Redaction');
