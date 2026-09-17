@@ -16,6 +16,20 @@ function generateElementId(index: number): string {
 }
 
 /**
+ * Attribute the generated element ID is written to on the real DOM node so
+ * `findElementByExtractedId` can find it again later. This ID is what the
+ * cloud reasoning provider is shown (`elements[i].id`, see
+ * `_build_context_summary` on the backend) and echoes back as `target_id`
+ * for click/type/select actions — until this attribute existed, nothing
+ * ever wrote it onto the page, so `action-executor.ts`'s
+ * `document.getElementById(target_id)` could never find a real element
+ * (scanner-generated IDs like "elem-5" essentially never match a page's own
+ * `id` attribute) and every click/type/select action failed with "Element
+ * not found" against any real website.
+ */
+export const ELEMENT_ID_ATTR = 'data-pva-id';
+
+/**
  * Checks if an element is visible in the viewport
  */
 function isElementVisible(element: Element): boolean {
@@ -205,6 +219,7 @@ export function scanDOM(): DOMScanResult {
 
     // Always scan, but mark visibility
     const elementId = generateElementId(elementIndex++);
+    node.setAttribute(ELEMENT_ID_ATTR, elementId);
     const type = getElementType(node);
 
     let metadata: InputMetadata | undefined;
@@ -239,35 +254,34 @@ export function scanDOM(): DOMScanResult {
 }
 
 /**
- * Gets element by extracted ID from the DOM
- * Useful for later action execution
+ * Finds the real DOM element a previous `scanDOM()` call assigned this
+ * extracted ID to, via the attribute `scanDOM()` writes onto it
+ * (`ELEMENT_ID_ATTR`) — what `action-executor.ts` uses to resolve a
+ * cloud-provided `target_id` back to a real element.
+ *
+ * This replaces an earlier version of this function that re-walked the DOM
+ * counting elements to find the Nth one, matching purely by traversal
+ * position with no check that the element found is actually the SAME node
+ * that was scanned. Any DOM change between the scan and the action
+ * (elements added/removed/reordered — routine on real, especially dynamic,
+ * pages, and an action always happens after a network round trip to the
+ * cloud reasoning provider) could silently shift which node a given index
+ * pointed to, targeting the wrong element rather than failing. Matching on
+ * the attribute instead means this can only ever return the exact node that
+ * was scanned, or `null` if it's gone — never a different one.
  */
-export function getElementByExtractedId(extractedId: string, _result: DOMScanResult): Element | null {
-  const index = parseInt(extractedId.replace('elem-', ''), 10);
-  if (isNaN(index)) {
-    return null;
-  }
+export function findElementByExtractedId(extractedId: string): HTMLElement | null {
+  return document.querySelector<HTMLElement>(`[${ELEMENT_ID_ATTR}="${escapeAttrSelectorValue(extractedId)}"]`);
+}
 
-  const walker = document.createTreeWalker(
-    document.documentElement,
-    NodeFilter.SHOW_ELEMENT,
-    null
-  );
-
-  let node: Element | null;
-  let currentIndex = 0;
-
-  while ((node = walker.nextNode() as Element)) {
-    if (!shouldScanElement(node)) {
-      continue;
-    }
-
-    if (currentIndex === index) {
-      return node;
-    }
-
-    currentIndex++;
-  }
-
-  return null;
+/**
+ * Escapes a value for safe use inside a double-quoted CSS attribute
+ * selector (`[attr="…"]`). Deliberately not `CSS.escape` — that targets
+ * unquoted-identifier escaping rules and isn't implemented in jsdom (this
+ * function needs to run correctly under both the real extension and the
+ * test suite); only backslash and double-quote are actually unsafe inside
+ * a double-quoted attribute value.
+ */
+function escapeAttrSelectorValue(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }
