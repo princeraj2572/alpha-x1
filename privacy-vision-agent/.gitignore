@@ -51,6 +51,11 @@ extension/public/ort/
 extension/public/tesseract/
 tmp/
 
+# Visual-detector ground-truth fixture images (real COCO/Flickr photographs
+# of real people — licensing + privacy reasons, not just size; see
+# visual-ground-truth-dataset.ts and OPERATIONS.md §8.6).
+extension/public/visual-fixtures/
+
 # Python
 __pycache__/
 *.py[cod]

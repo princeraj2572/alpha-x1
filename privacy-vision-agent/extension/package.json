@@ -10,7 +10,8 @@
     "type-check": "tsc --noEmit",
     "lint": "eslint src --ext .ts,.tsx",
     "test": "vitest",
-    "test:ui": "vitest --ui"
+    "test:ui": "vitest --ui",
+    "fetch:visual-fixtures": "node build-scripts/fetch-visual-fixtures.js"
   },
   "dependencies": {
     "lucide-react": "^0.462.0",
