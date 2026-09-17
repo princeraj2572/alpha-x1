@@ -23,7 +23,7 @@ from dotenv import load_dotenv
 # to its hardcoded default (Claude/Anthropic) regardless of .env's contents.
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
-from .api import health, websocket_handler, reasoning
+from .api import health, websocket_handler
 from .services.reasoning import ReasoningService
 
 # Configure logging
@@ -69,7 +69,6 @@ app.add_middleware(
 # Include routers
 app.include_router(health.router)
 app.include_router(websocket_handler.router)
-app.include_router(reasoning.router)
 
 
 @app.get("/")

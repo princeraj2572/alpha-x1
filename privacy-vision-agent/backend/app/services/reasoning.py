@@ -8,6 +8,7 @@ from typing import Optional
 
 from ..providers import BaseProvider, ReasoningRequest, ActionResponse, ClaudeProvider
 from ..providers.openai import OpenAIProvider
+from ..providers.ollama import OllamaProvider
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,11 @@ class ReasoningService:
                 model = os.getenv("OPENAI_MODEL", "gpt-4-turbo-preview")
                 self.provider = OpenAIProvider(api_key=api_key, model=model)
                 logger.info("[Reasoning Service] Using OpenAI provider")
+            elif provider_name == "ollama":
+                base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+                model = os.getenv("OLLAMA_MODEL", "llava")
+                self.provider = OllamaProvider(base_url=base_url, model=model)
+                logger.info(f"[Reasoning Service] Using Ollama provider ({model} @ {base_url})")
             else:
                 # Default to Claude
                 api_key = os.getenv("ANTHROPIC_API_KEY")

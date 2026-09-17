@@ -1,25 +1,62 @@
 /**
  * Metrics Collector
- * Collects and aggregates performance and accuracy metrics
+ * Collects and aggregates performance and accuracy metrics.
+ *
+ * Field names match `ui/state/types.ts`'s `Metrics` (what `pipeline-runner.ts`
+ * actually measures and `agentStore.setMetrics` actually stores) — this used
+ * to use a different phase-name shape (`phaseObserveMs`, `phaseReasonMs`, ...)
+ * matching the `agent/loop.ts` prototype removed elsewhere this session,
+ * which was this collector's only real producer. See DECISION-031's revisit
+ * note and the follow-up decision documenting this wiring.
  */
 
 export interface LatencyMetrics {
-  phaseObserveMs: number;
-  phaseSanitizeMs: number;
-  phaseReasonMs: number;
-  phaseValidateMs: number;
-  phaseExecuteMs: number;
-  phaseDetectMs: number;
-  iterationTotalMs: number;
-  endToEndMs: number;
+  domAnalysisMs: number;
+  piiDetectionMs: number;
+  visionInferenceMs: number;
+  fusionMs: number;
+  redactionMs: number;
+  networkLatencyMs: number;
+  cloudLatencyMs: number;
+  totalLatencyMs: number;
 }
 
+/**
+ * `cpuPercentage` deliberately does NOT exist here — there's still no
+ * reliable in-extension CPU API, and wiring a fake/zero value in would make
+ * `BenchmarkRunner.evaluateResources()` trivially "pass" a resource budget
+ * nothing actually measured — the same false-confidence failure mode
+ * DECISION-031 called out for the visual evaluator.
+ *
+ * `jsHeapUsedMb` DOES exist, per DECISION-031's own revisit note ("if real
+ * memory ... measurement becomes feasible, e.g. `performance.memory` where
+ * available"). It's optional and honestly labeled: Chrome-only (not in
+ * lib.dom.d.ts, absent in Firefox/Safari/Node), approximate (Chrome
+ * buckets/rounds the value for privacy), and JS heap only — not full process
+ * memory. `getJsHeapUsedMb()` returns `undefined` wherever it isn't
+ * available; never fabricated as 0.
+ */
 export interface ResourceMetrics {
-  memoryUsageMb: number;
-  cpuPercentage: number;
   domElementsCount: number;
   visualElementsCount: number;
   redactedElementsCount: number;
+  jsHeapUsedMb?: number;
+}
+
+interface ChromePerformanceMemory {
+  usedJSHeapSize: number;
+  totalJSHeapSize: number;
+  jsHeapSizeLimit: number;
+}
+
+/**
+ * Reads Chrome's non-standard `performance.memory.usedJSHeapSize`, in MB.
+ * Returns `undefined` anywhere it doesn't exist (Firefox, Safari, Node/vitest)
+ * rather than a fabricated 0 — see `ResourceMetrics.jsHeapUsedMb`.
+ */
+export function getJsHeapUsedMb(): number | undefined {
+  const memory = (performance as Performance & { memory?: ChromePerformanceMemory }).memory;
+  return memory ? memory.usedJSHeapSize / (1024 * 1024) : undefined;
 }
 
 export interface AccuracyMetrics {
@@ -75,14 +112,14 @@ export class MetricsCollector {
    */
   recordLatency(metrics: Partial<LatencyMetrics>): void {
     const fullMetrics: LatencyMetrics = {
-      phaseObserveMs: metrics.phaseObserveMs ?? 0,
-      phaseSanitizeMs: metrics.phaseSanitizeMs ?? 0,
-      phaseReasonMs: metrics.phaseReasonMs ?? 0,
-      phaseValidateMs: metrics.phaseValidateMs ?? 0,
-      phaseExecuteMs: metrics.phaseExecuteMs ?? 0,
-      phaseDetectMs: metrics.phaseDetectMs ?? 0,
-      iterationTotalMs: metrics.iterationTotalMs ?? 0,
-      endToEndMs: metrics.endToEndMs ?? 0,
+      domAnalysisMs: metrics.domAnalysisMs ?? 0,
+      piiDetectionMs: metrics.piiDetectionMs ?? 0,
+      visionInferenceMs: metrics.visionInferenceMs ?? 0,
+      fusionMs: metrics.fusionMs ?? 0,
+      redactionMs: metrics.redactionMs ?? 0,
+      networkLatencyMs: metrics.networkLatencyMs ?? 0,
+      cloudLatencyMs: metrics.cloudLatencyMs ?? 0,
+      totalLatencyMs: metrics.totalLatencyMs ?? 0,
     };
     this.measurements.latencies.push(fullMetrics);
   }
@@ -92,11 +129,10 @@ export class MetricsCollector {
    */
   recordResource(metrics: Partial<ResourceMetrics>): void {
     const fullMetrics: ResourceMetrics = {
-      memoryUsageMb: metrics.memoryUsageMb ?? 0,
-      cpuPercentage: metrics.cpuPercentage ?? 0,
       domElementsCount: metrics.domElementsCount ?? 0,
       visualElementsCount: metrics.visualElementsCount ?? 0,
       redactedElementsCount: metrics.redactedElementsCount ?? 0,
+      jsHeapUsedMb: metrics.jsHeapUsedMb,
     };
     this.measurements.resources.push(fullMetrics);
   }
@@ -135,50 +171,50 @@ export class MetricsCollector {
   private getAverageLatency(): LatencyMetrics {
     if (this.measurements.latencies.length === 0) {
       return {
-        phaseObserveMs: 0,
-        phaseSanitizeMs: 0,
-        phaseReasonMs: 0,
-        phaseValidateMs: 0,
-        phaseExecuteMs: 0,
-        phaseDetectMs: 0,
-        iterationTotalMs: 0,
-        endToEndMs: 0,
+        domAnalysisMs: 0,
+        piiDetectionMs: 0,
+        visionInferenceMs: 0,
+        fusionMs: 0,
+        redactionMs: 0,
+        networkLatencyMs: 0,
+        cloudLatencyMs: 0,
+        totalLatencyMs: 0,
       };
     }
 
     const sum = this.measurements.latencies.reduce(
       (acc, m) => ({
-        phaseObserveMs: acc.phaseObserveMs + m.phaseObserveMs,
-        phaseSanitizeMs: acc.phaseSanitizeMs + m.phaseSanitizeMs,
-        phaseReasonMs: acc.phaseReasonMs + m.phaseReasonMs,
-        phaseValidateMs: acc.phaseValidateMs + m.phaseValidateMs,
-        phaseExecuteMs: acc.phaseExecuteMs + m.phaseExecuteMs,
-        phaseDetectMs: acc.phaseDetectMs + m.phaseDetectMs,
-        iterationTotalMs: acc.iterationTotalMs + m.iterationTotalMs,
-        endToEndMs: acc.endToEndMs + m.endToEndMs,
+        domAnalysisMs: acc.domAnalysisMs + m.domAnalysisMs,
+        piiDetectionMs: acc.piiDetectionMs + m.piiDetectionMs,
+        visionInferenceMs: acc.visionInferenceMs + m.visionInferenceMs,
+        fusionMs: acc.fusionMs + m.fusionMs,
+        redactionMs: acc.redactionMs + m.redactionMs,
+        networkLatencyMs: acc.networkLatencyMs + m.networkLatencyMs,
+        cloudLatencyMs: acc.cloudLatencyMs + m.cloudLatencyMs,
+        totalLatencyMs: acc.totalLatencyMs + m.totalLatencyMs,
       }),
       {
-        phaseObserveMs: 0,
-        phaseSanitizeMs: 0,
-        phaseReasonMs: 0,
-        phaseValidateMs: 0,
-        phaseExecuteMs: 0,
-        phaseDetectMs: 0,
-        iterationTotalMs: 0,
-        endToEndMs: 0,
+        domAnalysisMs: 0,
+        piiDetectionMs: 0,
+        visionInferenceMs: 0,
+        fusionMs: 0,
+        redactionMs: 0,
+        networkLatencyMs: 0,
+        cloudLatencyMs: 0,
+        totalLatencyMs: 0,
       }
     );
 
     const count = this.measurements.latencies.length;
     return {
-      phaseObserveMs: sum.phaseObserveMs / count,
-      phaseSanitizeMs: sum.phaseSanitizeMs / count,
-      phaseReasonMs: sum.phaseReasonMs / count,
-      phaseValidateMs: sum.phaseValidateMs / count,
-      phaseExecuteMs: sum.phaseExecuteMs / count,
-      phaseDetectMs: sum.phaseDetectMs / count,
-      iterationTotalMs: sum.iterationTotalMs / count,
-      endToEndMs: sum.endToEndMs / count,
+      domAnalysisMs: sum.domAnalysisMs / count,
+      piiDetectionMs: sum.piiDetectionMs / count,
+      visionInferenceMs: sum.visionInferenceMs / count,
+      fusionMs: sum.fusionMs / count,
+      redactionMs: sum.redactionMs / count,
+      networkLatencyMs: sum.networkLatencyMs / count,
+      cloudLatencyMs: sum.cloudLatencyMs / count,
+      totalLatencyMs: sum.totalLatencyMs / count,
     };
   }
 
@@ -187,39 +223,29 @@ export class MetricsCollector {
    */
   private getAverageResource(): ResourceMetrics {
     if (this.measurements.resources.length === 0) {
-      return {
-        memoryUsageMb: 0,
-        cpuPercentage: 0,
-        domElementsCount: 0,
-        visualElementsCount: 0,
-        redactedElementsCount: 0,
-      };
+      return { domElementsCount: 0, visualElementsCount: 0, redactedElementsCount: 0 };
     }
 
     const sum = this.measurements.resources.reduce(
       (acc, m) => ({
-        memoryUsageMb: acc.memoryUsageMb + m.memoryUsageMb,
-        cpuPercentage: acc.cpuPercentage + m.cpuPercentage,
         domElementsCount: acc.domElementsCount + m.domElementsCount,
         visualElementsCount: acc.visualElementsCount + m.visualElementsCount,
         redactedElementsCount: acc.redactedElementsCount + m.redactedElementsCount,
       }),
-      {
-        memoryUsageMb: 0,
-        cpuPercentage: 0,
-        domElementsCount: 0,
-        visualElementsCount: 0,
-        redactedElementsCount: 0,
-      }
+      { domElementsCount: 0, visualElementsCount: 0, redactedElementsCount: 0 }
     );
 
     const count = this.measurements.resources.length;
+    const heapSamples = this.measurements.resources
+      .map((m) => m.jsHeapUsedMb)
+      .filter((v): v is number => v !== undefined);
+
     return {
-      memoryUsageMb: sum.memoryUsageMb / count,
-      cpuPercentage: sum.cpuPercentage / count,
       domElementsCount: sum.domElementsCount / count,
       visualElementsCount: sum.visualElementsCount / count,
       redactedElementsCount: sum.redactedElementsCount / count,
+      jsHeapUsedMb:
+        heapSamples.length > 0 ? heapSamples.reduce((a, b) => a + b, 0) / heapSamples.length : undefined,
     };
   }
 

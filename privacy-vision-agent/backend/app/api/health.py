@@ -3,7 +3,7 @@ Health check endpoint
 """
 
 from fastapi import APIRouter, Depends
-from datetime import datetime
+from datetime import datetime, timezone
 from ..schemas.messages import HealthResponse
 
 router = APIRouter(tags=["health"])
@@ -28,7 +28,7 @@ async def status():
     """Extended status information"""
     return {
         "status": "ok",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "service": "Privacy Vision Agent Backend",
         "version": "0.1.0",
         "features": [

@@ -3,6 +3,8 @@
  * Handles: click, type, scroll, select, navigate, wait, finish
  */
 
+import { findElementByExtractedId } from '@/scanner/dom-scanner';
+
 export type ActionType = 'click' | 'type' | 'scroll' | 'select' | 'navigate' | 'wait' | 'finish';
 
 export interface ActionPayload {
@@ -95,7 +97,7 @@ export class ActionExecutor {
       throw new Error('target_id required for click action');
     }
 
-    const element = document.getElementById(payload.target_id);
+    const element = findElementByExtractedId(payload.target_id);
     if (!element) {
       throw new Error(`Element not found: ${payload.target_id}`);
     }
@@ -106,11 +108,13 @@ export class ActionExecutor {
       await this.delay(300);
     }
 
-    // Simulate click
+    // Simulate click. No `view` field: real Chrome accepts `window` here,
+    // but jsdom's MouseEvent constructor rejects it as "not of type Window"
+    // in this test environment, and no real click handler needs it for a
+    // synthetic dispatch like this.
     const clickEvent = new MouseEvent('click', {
       bubbles: true,
       cancelable: true,
-      view: window,
     });
 
     element.dispatchEvent(clickEvent);
@@ -129,7 +133,7 @@ export class ActionExecutor {
       throw new Error('value must be a string for type action');
     }
 
-    const element = document.getElementById(payload.target_id) as HTMLInputElement | HTMLTextAreaElement;
+    const element = findElementByExtractedId(payload.target_id) as HTMLInputElement | HTMLTextAreaElement | null;
     if (!element) {
       throw new Error(`Element not found: ${payload.target_id}`);
     }
@@ -180,7 +184,7 @@ export class ActionExecutor {
       throw new Error('target_id required for select action');
     }
 
-    const selectElement = document.getElementById(payload.target_id) as HTMLSelectElement;
+    const selectElement = findElementByExtractedId(payload.target_id) as HTMLSelectElement | null;
     if (!selectElement || selectElement.tagName !== 'SELECT') {
       throw new Error(`Select element not found: ${payload.target_id}`);
     }

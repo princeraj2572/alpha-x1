@@ -28,6 +28,10 @@ import { getVisionModel, getVisionModelError } from './vision-loader';
 import { getFaceModelError } from './face-loader';
 import { ensureRealOcrEngine } from './ocr-loader';
 import { UiFinding } from './types';
+import { createMetricsCollector, getJsHeapUsedMb } from '@/evaluation/metrics-collector';
+
+/** One collector per panel session, aggregating every inspection run for the SIH benchmark. */
+export const metricsCollector = createMetricsCollector(crypto.randomUUID());
 
 let running = false;
 let stopped = false;
@@ -295,6 +299,20 @@ export async function runInspection(): Promise<void> {
     agentStore.setScreenshotPhase(verificationPassed ? 'sanitized-ready' : 'blocked');
     agentStore.setStatus('waiting');
     agentStore.setMetrics({ totalLatencyMs: performance.now() - t0 });
+
+    // Feed this run into the session's MetricsCollector (DECISION-031's
+    // follow-up) — real per-stage timings and element counts, all already
+    // computed above for the UI's own MetricsPanel, just also recorded here
+    // for cross-run aggregation. jsHeapUsedMb per the DECISION-031 follow-up's
+    // own revisit note: Chrome-only, approximate, undefined wherever
+    // `performance.memory` doesn't exist — see getJsHeapUsedMb().
+    metricsCollector.recordLatency(agentStore.getState().metrics);
+    metricsCollector.recordResource({
+      domElementsCount: page.elements.length,
+      visualElementsCount: visualFindings.length,
+      redactedElementsCount: fused.filter((f) => f.bbox).length,
+      jsHeapUsedMb: getJsHeapUsedMb(),
+    });
 
     if (agentStore.getState().privacyMode === 'automatic') {
       await maybeAutoSend();

@@ -48,7 +48,7 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["js/*", "models/*", "tesseract/*", "tesseract/lang/*"],
+      "resources": ["js/*", "models/*", "tesseract/*", "tesseract/lang/*", "visual-fixtures/*"],
       "matches": ["<all_urls>"]
     }
   ]
