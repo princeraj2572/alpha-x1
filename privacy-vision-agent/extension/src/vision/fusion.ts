@@ -25,6 +25,7 @@ export interface FusedElement extends ExtractedElement {
   visualConfidence?: number;
   visualType?: VisualElement['type'];
   fusionScore?: number;
+  sensitivity?: 'confidential';
 }
 
 export class PrivacyFusionEngine {
@@ -73,12 +74,12 @@ export class PrivacyFusionEngine {
     if (element.type === 'input') {
       const sensitivity = PrivacyDetector.checkFieldSensitivity(
         element.id,
-        (element.metadata as any)?.inputType,
+        element.metadata?.type,
         element.ariaLabel
       );
 
       if (sensitivity === SensitivityLevel.CONFIDENTIAL) {
-        (element as any).sensitivity = 'confidential';
+        element.sensitivity = 'confidential';
       }
     }
 
