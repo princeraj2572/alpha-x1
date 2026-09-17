@@ -234,53 +234,6 @@ async function handleBackendAction(msg: Message): Promise<void> {
   }
 }
 
-/**
- * Send DOM context to backend for cloud reasoning
- */
-async function sendContextForReasoning(task?: string): Promise<void> {
-  try {
-    if (killSwitch.isActive()) {
-      console.warn('[Privacy Vision Agent] Kill switch active — not sending context');
-      return;
-    }
-    if (!isConnectedToBackend) {
-      console.log('[Privacy Vision Agent] Backend not connected, skipping reasoning');
-      return;
-    }
-
-    const tab = await getActiveTab();
-    if (!tab || !tab.id) {
-      console.error('[Privacy Vision Agent] No active tab found');
-      return;
-    }
-
-    // Scan current DOM
-    const scanResult = await chrome.tabs.sendMessage(tab.id, { action: 'scanDOM' });
-
-    if (!scanResult?.success) {
-      console.error('[Privacy Vision Agent] DOM scan failed');
-      return;
-    }
-
-    console.log('[Privacy Vision Agent] Sending DOM context to backend for reasoning');
-
-    // Send context to backend
-    await wsClient.send('context', {
-      context: {
-        url: tab.url || '',
-        title: tab.title || '',
-        elements: scanResult.data?.elements || [],
-        page: scanResult.data?.page || {},
-      },
-      task: task,
-    });
-
-    console.log('[Privacy Vision Agent] Context sent to backend');
-  } catch (error) {
-    console.error('[Privacy Vision Agent] Failed to send context:', error);
-  }
-}
-
 // Initialize on background load
 initializeBackend();
 
@@ -345,13 +298,6 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
       provider: backendProvider,
       model: backendModel,
     });
-  } else if (request.action === 'sendContextForReasoning') {
-    sendContextForReasoning(request.task).then(() => {
-      sendResponse({ success: true });
-    }).catch((error) => {
-      sendResponse({ success: false, error: String(error) });
-    });
-    return true; // Keep channel open for async response
   } else if (request.action === 'sendSanitizedContext') {
     handleSendSanitizedContext(request).then(sendResponse);
     return true; // Keep channel open for async response
