@@ -22,6 +22,7 @@ jobs:
           cache-dependency-path: privacy-vision-agent/extension/package-lock.json
       - run: npm ci
       - run: npm run type-check
+      - run: npm run lint
       - run: npx vitest run
       - run: npm run build
 
