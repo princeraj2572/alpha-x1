@@ -1,4 +1,15 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+
+// benchmark-runner.ts pulls in visual-evaluator.ts -> vision-loader.ts ->
+// ort-loader.ts, whose `import('onnxruntime-web/webgpu')` specifier vitest's
+// Vite-powered Node runner can't resolve (onnxruntime-web declares
+// `"node": null`) — see visual-evaluator.test.ts for the full explanation.
+vi.mock('@/privacy/ort-loader', () => ({
+  loadOrtModule: vi.fn(async () => {
+    throw new Error('onnxruntime-web is browser-only; not available under vitest/Node');
+  }),
+}));
+
 import { MetricsCollector } from './metrics-collector';
 import { BenchmarkRunner } from './benchmark-runner';
 
