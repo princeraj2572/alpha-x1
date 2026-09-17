@@ -17,7 +17,7 @@
   },
   "overrides": [
     {
-      "files": ["src/security/safe-logger.ts"],
+      "files": ["src/security/safe-logger.ts", "src/security/safe-logger.test.ts"],
       "rules": {
         "no-console": "off"
       }
