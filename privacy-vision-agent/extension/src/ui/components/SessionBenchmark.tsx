@@ -42,6 +42,9 @@ export function SessionBenchmark() {
       <Row label="Avg DOM elements" value={resources.elementCounts.averageDomElements} mono />
       <Row label="Avg visual elements" value={resources.elementCounts.averageVisualElements} mono />
       <Row label="Avg redacted elements" value={resources.elementCounts.averageRedactedElements} mono />
+      {resources.memory.averageJsHeapUsedMb !== null && (
+        <Row label="Avg JS heap used" value={`${resources.memory.averageJsHeapUsedMb} MB`} mono />
+      )}
       <p style={{ fontSize: 10, color: c.dim, marginTop: 6 }}>{resources.note}</p>
     </Card>
   );
