@@ -104,10 +104,16 @@ export class PrivacyDetector {
   static redactElement(element: Record<string, unknown>): Record<string, unknown> {
     const redacted: Record<string, unknown> = { ...element };
 
+    // `element.type` (when this came from dom-scanner.ts) is the coarse
+    // ElementType ('input'/'button'/'textarea'/...), not the HTML input type
+    // attribute — that lives on `metadata.type` (InputMetadata, types/index.ts).
+    // vision/fusion.ts had the identical bug (read a field named `inputType`
+    // that never existed on real data) — fixed there; this was left as a
+    // named follow-up (DECISIONS.md, "Closed: Lint Gate") until now.
     const sensitivity = this.checkFieldSensitivity(
       element.id as string | undefined,
-      (element.type as string | undefined) ??
-        ((element.metadata as Record<string, unknown> | undefined)?.inputType as string | undefined),
+      ((element.metadata as Record<string, unknown> | undefined)?.type as string | undefined) ??
+        (element.type as string | undefined),
       (element.label as string | undefined) ?? (element.ariaLabel as string | undefined)
     );
 
