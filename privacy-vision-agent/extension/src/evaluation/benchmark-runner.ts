@@ -112,13 +112,14 @@ export class BenchmarkRunner {
   /**
    * Evaluate resource usage.
    *
-   * Memory (`performance.memory`) and CPU have NO reliable measurement path
-   * in this extension today (see metrics-collector.ts's `ResourceMetrics`
-   * comment) — reporting a synthetic pass/fail against unmeasured data would
-   * be a false-confidence result, the same failure mode DECISION-031 called
-   * out for the visual evaluator grading a stub. This reports the counts
-   * that genuinely ARE measured, with no pass/fail threshold invented for
-   * numbers that aren't backed by real budgets.
+   * CPU has NO reliable measurement path in this extension today (see
+   * metrics-collector.ts's `ResourceMetrics` comment) and is not reported.
+   * Memory IS now reported, per DECISION-031's own revisit note: JS heap via
+   * `performance.memory` (Chrome-only, approximate — Chrome buckets/rounds
+   * it for privacy — and JS heap only, not full process RSS). `null` wherever
+   * it wasn't available for any recorded run, never a fabricated number.
+   * Neither memory nor the element counts carry an invented pass/fail
+   * threshold — nothing here is graded against a real budget.
    */
   static evaluateResources(metricsReport: EvaluationReport) {
     console.log('[Benchmark] Evaluating resource usage...');
@@ -126,15 +127,19 @@ export class BenchmarkRunner {
     const dom = metricsReport.resource?.domElementsCount ?? 0;
     const visual = metricsReport.resource?.visualElementsCount ?? 0;
     const redacted = metricsReport.resource?.redactedElementsCount ?? 0;
+    const jsHeapUsedMb = metricsReport.resource?.jsHeapUsedMb;
 
     return {
       title: 'Client Resource Usage',
       timestamp: new Date().toISOString(),
-      note: 'Memory/CPU are not measured (no reliable in-extension API) — element counts only.',
+      note: 'CPU is not measured (no reliable in-extension API). JS heap is Chrome-only and approximate (performance.memory), not full process memory.',
       elementCounts: {
         averageDomElements: dom.toFixed(1),
         averageVisualElements: visual.toFixed(1),
         averageRedactedElements: redacted.toFixed(1),
+      },
+      memory: {
+        averageJsHeapUsedMb: jsHeapUsedMb !== undefined ? jsHeapUsedMb.toFixed(1) : null,
       },
       overall: {
         // Nothing here is a real budget check — always "true" (measured, not
@@ -260,6 +265,8 @@ export class BenchmarkRunner {
     lines.push(`Avg DOM elements: ${report.sihMetrics.clientResourceUsage?.elementCounts?.averageDomElements}`);
     lines.push(`Avg visual elements: ${report.sihMetrics.clientResourceUsage?.elementCounts?.averageVisualElements}`);
     lines.push(`Avg redacted elements: ${report.sihMetrics.clientResourceUsage?.elementCounts?.averageRedactedElements}`);
+    const avgHeap = report.sihMetrics.clientResourceUsage?.memory?.averageJsHeapUsedMb;
+    lines.push(`Avg JS heap used: ${avgHeap !== null && avgHeap !== undefined ? `${avgHeap} MB` : 'not available'}`);
 
     lines.push(`\n${'-'.repeat(60)}`);
     lines.push('SIH METRIC 5: End-to-End Latency');

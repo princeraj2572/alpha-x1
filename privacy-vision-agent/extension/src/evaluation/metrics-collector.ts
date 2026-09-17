@@ -22,17 +22,41 @@ export interface LatencyMetrics {
 }
 
 /**
- * `memoryUsageMb`/`cpuPercentage` deliberately do NOT exist here. Neither is
- * measurable today: there's no reliable in-extension CPU API, and wiring a
- * fake/zero value in would make `BenchmarkRunner.evaluateResources()`
- * trivially "pass" a resource budget nothing actually measured — the same
- * false-confidence failure mode DECISION-031 called out for the visual
- * evaluator. Only counts pipeline-runner.ts genuinely produces are here.
+ * `cpuPercentage` deliberately does NOT exist here — there's still no
+ * reliable in-extension CPU API, and wiring a fake/zero value in would make
+ * `BenchmarkRunner.evaluateResources()` trivially "pass" a resource budget
+ * nothing actually measured — the same false-confidence failure mode
+ * DECISION-031 called out for the visual evaluator.
+ *
+ * `jsHeapUsedMb` DOES exist, per DECISION-031's own revisit note ("if real
+ * memory ... measurement becomes feasible, e.g. `performance.memory` where
+ * available"). It's optional and honestly labeled: Chrome-only (not in
+ * lib.dom.d.ts, absent in Firefox/Safari/Node), approximate (Chrome
+ * buckets/rounds the value for privacy), and JS heap only — not full process
+ * memory. `getJsHeapUsedMb()` returns `undefined` wherever it isn't
+ * available; never fabricated as 0.
  */
 export interface ResourceMetrics {
   domElementsCount: number;
   visualElementsCount: number;
   redactedElementsCount: number;
+  jsHeapUsedMb?: number;
+}
+
+interface ChromePerformanceMemory {
+  usedJSHeapSize: number;
+  totalJSHeapSize: number;
+  jsHeapSizeLimit: number;
+}
+
+/**
+ * Reads Chrome's non-standard `performance.memory.usedJSHeapSize`, in MB.
+ * Returns `undefined` anywhere it doesn't exist (Firefox, Safari, Node/vitest)
+ * rather than a fabricated 0 — see `ResourceMetrics.jsHeapUsedMb`.
+ */
+export function getJsHeapUsedMb(): number | undefined {
+  const memory = (performance as Performance & { memory?: ChromePerformanceMemory }).memory;
+  return memory ? memory.usedJSHeapSize / (1024 * 1024) : undefined;
 }
 
 export interface AccuracyMetrics {
@@ -108,6 +132,7 @@ export class MetricsCollector {
       domElementsCount: metrics.domElementsCount ?? 0,
       visualElementsCount: metrics.visualElementsCount ?? 0,
       redactedElementsCount: metrics.redactedElementsCount ?? 0,
+      jsHeapUsedMb: metrics.jsHeapUsedMb,
     };
     this.measurements.resources.push(fullMetrics);
   }
@@ -211,10 +236,16 @@ export class MetricsCollector {
     );
 
     const count = this.measurements.resources.length;
+    const heapSamples = this.measurements.resources
+      .map((m) => m.jsHeapUsedMb)
+      .filter((v): v is number => v !== undefined);
+
     return {
       domElementsCount: sum.domElementsCount / count,
       visualElementsCount: sum.visualElementsCount / count,
       redactedElementsCount: sum.redactedElementsCount / count,
+      jsHeapUsedMb:
+        heapSamples.length > 0 ? heapSamples.reduce((a, b) => a + b, 0) / heapSamples.length : undefined,
     };
   }
 

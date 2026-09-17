@@ -63,9 +63,33 @@ describe('BenchmarkRunner.evaluateLatency / evaluateResources (real MetricsColle
     expect(latency.perIteration.category).toBe('excellent'); // 250ms < 500ms threshold
 
     const resources = BenchmarkRunner.evaluateResources(report);
-    // No memory/CPU field anywhere — only counts that were actually recorded.
+    // No CPU field anywhere — still no reliable in-extension API for it.
     expect(resources.elementCounts.averageDomElements).toBe('80.0');
-    expect(resources).not.toHaveProperty('memory');
     expect(resources).not.toHaveProperty('cpu');
+    // `performance.memory` doesn't exist under vitest/Node, so jsHeapUsedMb
+    // was never recorded for this run — reported as null, not fabricated.
+    expect(resources.memory.averageJsHeapUsedMb).toBeNull();
+  });
+
+  it('averages jsHeapUsedMb across runs that recorded it, real MetricsCollector data', () => {
+    const collector = new MetricsCollector('heap-session');
+    collector.recordLatency({ totalLatencyMs: 100 });
+    collector.recordResource({ domElementsCount: 10, jsHeapUsedMb: 20 });
+    collector.recordResource({ domElementsCount: 10, jsHeapUsedMb: 40 });
+    const report = collector.generateReport(2);
+
+    expect(report.resource.jsHeapUsedMb).toBeCloseTo(30);
+
+    const resources = BenchmarkRunner.evaluateResources(report);
+    expect(resources.memory.averageJsHeapUsedMb).toBe('30.0');
+  });
+
+  it('does not let an unmeasured run pull down the average of runs that did measure jsHeapUsedMb', () => {
+    const collector = new MetricsCollector('mixed-session');
+    collector.recordResource({ domElementsCount: 10, jsHeapUsedMb: 50 });
+    collector.recordResource({ domElementsCount: 10 }); // no performance.memory this run
+    const report = collector.generateReport(2);
+
+    expect(report.resource.jsHeapUsedMb).toBe(50);
   });
 });
