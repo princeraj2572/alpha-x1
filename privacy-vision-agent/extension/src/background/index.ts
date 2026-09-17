@@ -6,6 +6,7 @@
 import { AgentStatus } from '@/types/index';
 import { wsClient, Message } from '@/communication/websocket-client';
 import { killSwitch } from '@/security/kill-switch';
+import { createSessionManager, SessionManager } from '@/security/session-manager';
 import { ActionPolicyValidator } from '@/security/action-policy';
 import { validateSanitizedContext } from '@/ui/state/outbound';
 import { ConfirmationGate } from './confirmation-gate';
@@ -110,6 +111,50 @@ wsClient.onMessage('error', (msg: Message) => {
  */
 const confirmationGate = new ConfirmationGate(undefined, (id, details) => {
   emitAgentEvent('pendingConfirmation', { id, ...details });
+});
+
+/**
+ * Idle-session enforcement: SessionManager was fully built (heartbeat,
+ * exponential-backoff-aware reconnect bookkeeping, kill-switch-on-timeout)
+ * but never instantiated anywhere — nothing enforced session inactivity
+ * timeout at all before this. Created lazily on the first real activity
+ * once a session ID exists (`wsClient` only learns it from the backend's
+ * first message — see `processMessage`), not at module load.
+ */
+const EXPLICIT_STOP_REASON = 'user stop from side panel';
+let sessionManager: SessionManager | null = null;
+
+function ensureSessionManager(): SessionManager | null {
+  const id = wsClient.getSessionId();
+  if (!id) {
+    return null;
+  }
+  if (!sessionManager) {
+    sessionManager = createSessionManager({ sessionId: id });
+    sessionManager.subscribe((state) => {
+      // Only react to the session dying on its own (idle timeout / reconnect
+      // exhaustion) — an explicit stop already runs these same two steps
+      // itself, right where it calls killSwitch.activate() below.
+      if (!state.isActive && state.reason !== EXPLICIT_STOP_REASON) {
+        confirmationGate.rejectAll();
+        emitAgentEvent('stopped', { reason: state.reason ?? 'session terminated' });
+      }
+    });
+  }
+  return sessionManager;
+}
+
+wsClient.onConnect(() => {
+  sessionManager?.markConnected();
+});
+
+wsClient.onDisconnect(() => {
+  sessionManager?.markDisconnected();
+});
+
+// Every backend message counts as session activity, whatever its type.
+wsClient.onMessage(() => {
+  ensureSessionManager()?.recordActivity();
 });
 
 /**
@@ -284,6 +329,8 @@ chrome.runtime.onMessage.addListener((request, _sender, _sendResponse) => {
  * Handles messages from popup
  */
 chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
+  sessionManager?.recordActivity();
+
   if (request.action === 'getStatus') {
     sendResponse(extensionState);
   } else if (request.action === 'scanCurrentTab') {
@@ -303,10 +350,15 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
     return true; // Keep channel open for async response
   } else if (request.action === 'stopAgent') {
     if (!killSwitch.isActive()) {
-      killSwitch.activate('user stop from side panel');
+      killSwitch.activate(EXPLICIT_STOP_REASON);
     }
     confirmationGate.rejectAll();
     emitAgentEvent('stopped', { reason: 'user stop' });
+    // Tear down the idle-timeout tracker so it doesn't keep ticking toward a
+    // pointless timeout in the background — a fresh one is created lazily
+    // from the next real activity (see ensureSessionManager).
+    sessionManager?.terminate(EXPLICIT_STOP_REASON);
+    sessionManager = null;
     sendResponse({ ok: true });
   } else if (request.action === 'resumeAgent') {
     if (killSwitch.isActive()) {
