@@ -6,14 +6,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
  * worker, WASM core, or language data — none of which are meaningfully
  * available under vitest/Node anyway.
  */
-const { recognizeMock, createWorkerMock } = vi.hoisted(() => {
+const { recognizeMock, setParametersMock, createWorkerMock } = vi.hoisted(() => {
   const recognizeMock = vi.fn();
+  const setParametersMock = vi.fn(async () => {});
   const terminateMock = vi.fn(async () => {});
   const createWorkerMock = vi.fn(async (..._args: unknown[]) => ({
     recognize: recognizeMock,
+    setParameters: setParametersMock,
     terminate: terminateMock,
   }));
-  return { recognizeMock, createWorkerMock };
+  return { recognizeMock, setParametersMock, createWorkerMock };
 });
 
 // tesseract.js's real `main` is CJS; Rollup's dynamic-import interop wraps it
@@ -43,6 +45,7 @@ const config = {
 beforeEach(() => {
   createWorkerMock.mockClear();
   recognizeMock.mockReset();
+  setParametersMock.mockClear();
 });
 
 describe('TesseractOcrEngine.recognize', () => {
@@ -177,6 +180,87 @@ describe('TesseractOcrEngine.recognize', () => {
 
     warn.mockRestore();
     vi.useRealTimers();
+  });
+});
+
+describe('TesseractOcrEngine digit-recovery pass', () => {
+  it('recovers a long digit run misread by the normal pass, at the same bbox', async () => {
+    const numberBbox = { x0: 50, y0: 167, x1: 427, y1: 193 };
+    recognizeMock
+      .mockResolvedValueOnce(
+        page([{ paragraphs: [{ lines: [line('4000 123% Sb1I8 90.0', 64, numberBbox)] }] }])
+      )
+      .mockResolvedValueOnce(
+        page([{ paragraphs: [{ lines: [line('4000 1234 5678 9010', 0, numberBbox)] }] }])
+      );
+
+    const engine = new TesseractOcrEngine(config);
+    const regions = await engine.recognize({ kind: 'canvas', canvas: {} as HTMLCanvasElement });
+
+    expect(regions).toHaveLength(2);
+    expect(regions[0].text).toBe('4000 123% Sb1I8 90.0');
+    expect(regions[1]).toEqual({
+      text: '4000 1234 5678 9010',
+      bbox: { x: 50, y: 167, width: 377, height: 26 },
+      confidence: 0.5,
+      origin: 'tesseract-digits',
+    });
+
+    // Whitelist set for the recovery pass, then reset so a later normal-text
+    // recognize() on this same cached worker isn't still digit-restricted.
+    expect(setParametersMock).toHaveBeenNthCalledWith(1, { tessedit_char_whitelist: '0123456789 -' });
+    expect(setParametersMock).toHaveBeenLastCalledWith({ tessedit_char_whitelist: '' });
+  });
+
+  it('ignores short digit runs (dates, quantities) below the recovery threshold', async () => {
+    const bbox = { x0: 50, y0: 202, x1: 258, y1: 238 };
+    recognizeMock
+      .mockResolvedValueOnce(page([{ paragraphs: [{ lines: [line('GOOD THRU 12/20', 90, bbox)] }] }]))
+      .mockResolvedValueOnce(page([{ paragraphs: [{ lines: [line('- 12 20', 0, bbox)] }] }]));
+
+    const engine = new TesseractOcrEngine(config);
+    const regions = await engine.recognize({ kind: 'canvas', canvas: {} as HTMLCanvasElement });
+
+    expect(regions).toHaveLength(1);
+    expect(regions[0].text).toBe('GOOD THRU 12/20');
+  });
+
+  it('ignores a long digit run that does not overlap anything the normal pass found', async () => {
+    recognizeMock
+      .mockResolvedValueOnce(
+        page([{ paragraphs: [{ lines: [line('Visa Classic', 96, { x0: 43, y0: 37, x1: 218, y1: 63 })] }] }])
+      )
+      .mockResolvedValueOnce(
+        page([
+          {
+            paragraphs: [
+              { lines: [line('4000 1234 5678 9010', 0, { x0: 50, y0: 167, x1: 427, y1: 193 })] },
+            ],
+          },
+        ])
+      );
+
+    const engine = new TesseractOcrEngine(config);
+    const regions = await engine.recognize({ kind: 'canvas', canvas: {} as HTMLCanvasElement });
+
+    expect(regions).toHaveLength(1);
+    expect(regions[0].text).toBe('Visa Classic');
+  });
+
+  it('degrades gracefully when the recovery pass itself fails, keeping the normal-pass regions', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    recognizeMock
+      .mockResolvedValueOnce(page([{ paragraphs: [{ lines: [line('kept line of text', 75)] }] }]))
+      .mockRejectedValueOnce(new Error('recognize failed mid-pass'));
+
+    const engine = new TesseractOcrEngine(config);
+    const regions = await engine.recognize({ kind: 'canvas', canvas: {} as HTMLCanvasElement });
+
+    expect(regions).toHaveLength(1);
+    expect(regions[0].text).toBe('kept line of text');
+    // Whitelist still reset even though the pass itself threw.
+    expect(setParametersMock).toHaveBeenLastCalledWith({ tessedit_char_whitelist: '' });
+    warn.mockRestore();
   });
 });
 

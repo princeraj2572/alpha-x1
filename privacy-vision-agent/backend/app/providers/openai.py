@@ -3,10 +3,7 @@ OpenAI Provider Implementation
 Implements browser automation reasoning via OpenAI's GPT models
 """
 
-import asyncio
 import json
-from typing import Optional
-from pydantic import BaseModel
 import httpx
 
 from .base import BaseProvider, ReasoningRequest, ActionResponse
@@ -85,34 +82,38 @@ Always respond with valid JSON only, no additional text."""
 
         except Exception as e:
             return ActionResponse(
-                action_id=f"openai-error-{request.session_id}",
                 action_type="wait",
                 target_id=None,
                 confidence=0.0,
                 reason=f"Error: {str(e)}",
-                error=str(e),
             )
 
     def _build_context_message(self, request: ReasoningRequest) -> str:
         """Build the context message for OpenAI"""
+        elements = request.context.get("elements", [])
         elements_text = "\n".join(
             [
                 f"- {el.get('type', 'unknown')}: {el.get('text', el.get('label', 'unlabeled'))} (id: {el.get('id')})"
-                for el in request.context.get("elements", [])[:20]  # Limit to 20 elements
+                for el in elements[:20]  # Limit to 20 elements
             ]
         )
+        stats = {}
+        for el in elements:
+            t = el.get("type", "unknown")
+            stats[t] = stats.get(t, 0) + 1
 
         return f"""Current Task: {request.task}
 
-Page Title: {request.context.get('page', {}).get('title', 'Unknown')}
+Page Title: {request.context.get('title', 'Unknown')}
+Page URL: {request.context.get('url', 'Unknown')}
 
 Available Elements:
 {elements_text}
 
 Visual Elements Detected:
-- Buttons: {request.context.get('stats', {}).get('buttons', 0)}
-- Inputs: {request.context.get('stats', {}).get('inputs', 0)}
-- Links: {request.context.get('stats', {}).get('links', 0)}
+- Buttons: {stats.get('button', 0)}
+- Inputs: {stats.get('input', 0)}
+- Links: {stats.get('link', 0)}
 
 What action should be taken next?"""
 
@@ -159,26 +160,19 @@ What action should be taken next?"""
             action_data = json.loads(json_str)
 
             return ActionResponse(
-                action_id=f"openai-{asyncio.get_event_loop().time()}",
                 action_type=action_data.get("action_type", "wait"),
                 target_id=action_data.get("target_id"),
                 value=action_data.get("value"),
                 confidence=float(action_data.get("confidence", 0.5)),
                 reason=action_data.get("reason", "No reason provided"),
-                metadata={
-                    "model": self.model,
-                    "conversation_turns": len(self.conversation_history),
-                },
             )
         except (json.JSONDecodeError, KeyError, ValueError) as e:
             # If parsing fails, return a wait action
             return ActionResponse(
-                action_id=f"openai-parse-error-{asyncio.get_event_loop().time()}",
                 action_type="wait",
                 target_id=None,
                 confidence=0.0,
                 reason=f"Failed to parse response: {str(e)}",
-                error=f"Parse error: {str(e)}",
             )
 
     def reset_conversation(self):
@@ -188,3 +182,31 @@ What action should be taken next?"""
     def get_conversation_length(self) -> int:
         """Get current conversation history length"""
         return len(self.conversation_history)
+
+    async def validate_connection(self) -> bool:
+        """Test OpenAI connection"""
+        try:
+            headers = {
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+            }
+            payload = {
+                "model": self.model,
+                "messages": [{"role": "user", "content": "Hi"}],
+                "max_tokens": 5,
+            }
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.post(
+                    f"{self.base_url}/chat/completions",
+                    headers=headers,
+                    json=payload,
+                )
+                response.raise_for_status()
+            return True
+        except Exception:
+            return False
+
+    @property
+    def name(self) -> str:
+        """Provider name"""
+        return f"openai ({self.model})"
