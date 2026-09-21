@@ -84,6 +84,10 @@ const PRIVACY_CLASS_MAP: Record<string, { type: PrivacyType; strategy: 'blur' | 
   book: { type: PrivacyType.DOCUMENT, strategy: 'blackout', confidenceScale: 0.5 },
   'cell phone': { type: PrivacyType.DOCUMENT, strategy: 'blackout', confidenceScale: 0.4 },
   laptop: { type: PrivacyType.DOCUMENT, strategy: 'blackout', confidenceScale: 0.3 },
+  // A visible monitor/TV can be showing a video call, dashboard, or inbox in
+  // the background of a screenshot — same "surface that may render sensitive
+  // content" risk class as laptop/cell phone above.
+  tv: { type: PrivacyType.DOCUMENT, strategy: 'blackout', confidenceScale: 0.4 },
 };
 
 const COCO_CLASSES = [

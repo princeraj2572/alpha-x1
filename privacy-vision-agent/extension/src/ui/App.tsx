@@ -15,10 +15,12 @@ import { ScreenshotInspector } from './components/ScreenshotInspector';
 import { PrivacyGate } from './components/PrivacyGate';
 import { PrivacyReview } from './components/PrivacyReview';
 import { CloudDecision } from './components/CloudDecision';
+import { PendingActionConfirm } from './components/PendingActionConfirm';
 import { ActionValidation } from './components/ActionValidation';
 import { ExecutionStatus } from './components/ExecutionStatus';
 import { SessionTimeline } from './components/SessionTimeline';
 import { MetricsPanel } from './components/MetricsPanel';
+import { SessionBenchmark } from './components/SessionBenchmark';
 
 export function App() {
   const s = useAgentStore();
@@ -75,24 +77,29 @@ export function App() {
         agentStore.addEvent(`Cloud action received: ${p.actionType}`, 'cloud');
       } else if (e.kind === 'actionValidation') {
         const p = e.payload as Record<string, unknown>;
+        const checking = p.status === 'checking';
         const approved = p.status === 'approved';
         agentStore.setActionValidation({
-          status: approved ? 'approved' : 'blocked',
+          status: checking ? 'checking' : approved ? 'approved' : 'blocked',
           actionSummary: (p.actionSummary as string) ?? undefined,
           reason: (p.reason as string) ?? undefined,
           checks: {
-            actionAllowed: approved,
+            actionAllowed: checking ? undefined : approved,
             schemaValid: Boolean(p.schemaValid),
             targetExists: approved ? true : undefined,
             targetVisible: approved ? true : undefined,
             pageStateValid: approved ? true : undefined,
           },
         });
-        agentStore.setStage('ACTION_VALIDATION', approved ? 'success' : 'blocked', (p.reason as string) ?? undefined);
-        if (approved) {
-          agentStore.setStage('EXECUTION', 'running');
+        if (!checking) {
+          // Resolved (approved or blocked) — the confirm prompt, if any, is done.
+          agentStore.setPendingCloudAction(null);
+          agentStore.setStage('ACTION_VALIDATION', approved ? 'success' : 'blocked', (p.reason as string) ?? undefined);
+          if (approved) {
+            agentStore.setStage('EXECUTION', 'running');
+          }
+          agentStore.addEvent(`Local validation ${approved ? 'passed' : 'blocked'}`, 'validate');
         }
-        agentStore.addEvent(`Local validation ${approved ? 'passed' : 'blocked'}`, 'validate');
       } else if (e.kind === 'execution') {
         const p = e.payload as Record<string, unknown>;
         if (p.status === 'executing') {
@@ -108,7 +115,27 @@ export function App() {
           agentStore.addEvent(`Browser action ${p.success ? 'executed' : 'failed'}`, 'execute');
         }
       } else if (e.kind === 'stopped') {
-        markStopped('backend');
+        // Was hardcoded to 'backend', discarding the real reason the
+        // background worker sent (e.g. session-timeout wiring stopped:
+        // { reason: 'Session timeout' }) — every backend-initiated stop
+        // looked identical in the event log regardless of cause.
+        const p = e.payload as Record<string, unknown>;
+        markStopped(typeof p.reason === 'string' ? p.reason : 'backend');
+      } else if (e.kind === 'backendError') {
+        const p = e.payload as Record<string, unknown>;
+        const message = String(p.message ?? 'Backend error');
+        agentStore.setError(message);
+        agentStore.addEvent(message, 'error');
+      } else if (e.kind === 'pendingConfirmation') {
+        const p = e.payload as Record<string, unknown>;
+        agentStore.setPendingCloudAction({
+          id: String(p.id),
+          actionType: String(p.actionType ?? 'unknown'),
+          targetLabel: (p.targetLabel as string) ?? null,
+          reason: (p.reason as string) ?? null,
+          riskLevel: (p.riskLevel as string) ?? null,
+        });
+        agentStore.addEvent(`Confirmation required: ${p.actionType}`, 'validate');
       }
     });
 
@@ -217,9 +244,11 @@ export function App() {
       <PrivacyGate />
       <PrivacyReview />
       <CloudDecision />
+      <PendingActionConfirm />
       <ActionValidation />
       <ExecutionStatus />
       <MetricsPanel />
+      <SessionBenchmark />
       <SessionTimeline />
     </div>
   );

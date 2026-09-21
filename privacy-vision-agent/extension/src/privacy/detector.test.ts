@@ -96,6 +96,26 @@ describe('PrivacyDetector.redactElement (facade)', () => {
     const out = privacyDetector.redactElement({ id: 'p', type: 'password', value: 'x' });
     expect(out.value).toBeUndefined();
   });
+
+  it('drops the value of a real dom-scanner-shaped password field, with no keyword hint to fall back on', () => {
+    // dom-scanner.ts never sets the top-level `type` to the HTML input type —
+    // that's the coarse ElementType ('input'/'button'/...). The real input
+    // type attribute lives on `metadata.type` (InputMetadata). The tests
+    // above all pass `type: 'password'` directly at the top level, which
+    // doesn't reflect the real shape — worse, `id: 'password-field'` would
+    // still classify correctly via the keyword-heuristics fallback even with
+    // the bug this test guards against, since "password" is in the id. Using
+    // a generic id/no label here means this only passes if `metadata.type`
+    // is actually read.
+    const out = PrivacyDetector.redactElement({
+      id: 'field-7',
+      type: 'input',
+      metadata: { type: 'password' },
+      value: 'secret123',
+    });
+    expect(out.value).toBeUndefined();
+    expect(out.sensitivity).toBe('confidential');
+  });
 });
 
 describe('Privacy guarantees (facade)', () => {

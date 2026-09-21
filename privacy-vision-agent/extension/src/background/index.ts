@@ -6,8 +6,10 @@
 import { AgentStatus } from '@/types/index';
 import { wsClient, Message } from '@/communication/websocket-client';
 import { killSwitch } from '@/security/kill-switch';
+import { createSessionManager, SessionManager } from '@/security/session-manager';
 import { ActionPolicyValidator } from '@/security/action-policy';
 import { validateSanitizedContext } from '@/ui/state/outbound';
+import { ConfirmationGate } from './confirmation-gate';
 
 console.log('[Privacy Vision Agent] Background service worker loaded');
 
@@ -87,6 +89,74 @@ wsClient.onMessage('action', (msg: Message) => {
   handleBackendAction(msg).catch(console.error);
 });
 
+// Backend errors (reasoning failures, DECISION-014's repeated-action-failure
+// warning, ...) arrived over the socket but had no handler at all before
+// this — silently dropped, invisible to the user. Surface them the same way
+// every other backend signal reaches the panel.
+wsClient.onMessage('error', (msg: Message) => {
+  const p = msg.payload as Record<string, unknown>;
+  console.error('[Privacy Vision Agent] Backend reported an error:', p);
+  emitAgentEvent('backendError', {
+    errorCode: p.error_code ?? null,
+    message: p.message ?? 'Unknown backend error',
+  });
+});
+
+/**
+ * Dangerous cloud actions (navigate/finish — see ActionPolicyValidator) wait
+ * here for the user's explicit approve/reject from the side panel before
+ * `handleBackendAction` proceeds to execute them (DECISION-029). Before this,
+ * `requiresConfirmation` was computed and displayed but never actually
+ * gated anything — execution went ahead regardless.
+ */
+const confirmationGate = new ConfirmationGate(undefined, (id, details) => {
+  emitAgentEvent('pendingConfirmation', { id, ...details });
+});
+
+/**
+ * Idle-session enforcement: SessionManager was fully built (heartbeat,
+ * exponential-backoff-aware reconnect bookkeeping, kill-switch-on-timeout)
+ * but never instantiated anywhere — nothing enforced session inactivity
+ * timeout at all before this. Created lazily on the first real activity
+ * once a session ID exists (`wsClient` only learns it from the backend's
+ * first message — see `processMessage`), not at module load.
+ */
+const EXPLICIT_STOP_REASON = 'user stop from side panel';
+let sessionManager: SessionManager | null = null;
+
+function ensureSessionManager(): SessionManager | null {
+  const id = wsClient.getSessionId();
+  if (!id) {
+    return null;
+  }
+  if (!sessionManager) {
+    sessionManager = createSessionManager({ sessionId: id });
+    sessionManager.subscribe((state) => {
+      // Only react to the session dying on its own (idle timeout / reconnect
+      // exhaustion) — an explicit stop already runs these same two steps
+      // itself, right where it calls killSwitch.activate() below.
+      if (!state.isActive && state.reason !== EXPLICIT_STOP_REASON) {
+        confirmationGate.rejectAll();
+        emitAgentEvent('stopped', { reason: state.reason ?? 'session terminated' });
+      }
+    });
+  }
+  return sessionManager;
+}
+
+wsClient.onConnect(() => {
+  sessionManager?.markConnected();
+});
+
+wsClient.onDisconnect(() => {
+  sessionManager?.markDisconnected();
+});
+
+// Every backend message counts as session activity, whatever its type.
+wsClient.onMessage(() => {
+  ensureSessionManager()?.recordActivity();
+});
+
 /**
  * Handle action from backend
  */
@@ -118,17 +188,45 @@ async function handleBackendAction(msg: Message): Promise<void> {
       value: p.value as string | number | undefined,
       url: p.url as string | undefined,
     });
+    const actionSummary = `${actionType} → ${p.target_id ?? ''}`;
     emitAgentEvent('actionValidation', {
-      status: policy.valid ? 'approved' : 'blocked',
+      status: !policy.valid ? 'blocked' : policy.requiresConfirmation ? 'checking' : 'approved',
       riskLevel: policy.riskLevel,
       requiresConfirmation: policy.requiresConfirmation,
       reason: policy.reason ?? null,
-      actionSummary: `${actionType} → ${p.target_id ?? ''}`,
+      actionSummary,
       schemaValid: true,
     });
     if (!policy.valid) {
       await wsClient.send('action_result', { message_id: msg.message_id, success: false, error: policy.reason }).catch(() => {});
       return;
+    }
+
+    // Dangerous actions (navigate/finish) wait for explicit user approval
+    // before proceeding — see confirmationGate above.
+    if (policy.requiresConfirmation) {
+      const approved = await confirmationGate.request(msg.message_id, {
+        actionType,
+        targetLabel: p.target_id ?? p.target ?? null,
+        reason: p.reason ?? null,
+        riskLevel: policy.riskLevel,
+      });
+      if (!approved) {
+        emitAgentEvent('actionValidation', {
+          status: 'blocked',
+          reason: 'rejected by user (confirmation required)',
+          actionSummary,
+        });
+        await wsClient
+          .send('action_result', {
+            message_id: msg.message_id,
+            success: false,
+            error: 'rejected by user (confirmation required)',
+          })
+          .catch(() => {});
+        return;
+      }
+      emitAgentEvent('actionValidation', { status: 'approved', actionSummary, reason: 'confirmed by user' });
     }
 
     const tab = await getActiveTab();
@@ -178,53 +276,6 @@ async function handleBackendAction(msg: Message): Promise<void> {
     }).catch((err) => {
       console.error('[Privacy Vision Agent] Failed to send error result:', err);
     });
-  }
-}
-
-/**
- * Send DOM context to backend for cloud reasoning
- */
-async function sendContextForReasoning(task?: string): Promise<void> {
-  try {
-    if (killSwitch.isActive()) {
-      console.warn('[Privacy Vision Agent] Kill switch active — not sending context');
-      return;
-    }
-    if (!isConnectedToBackend) {
-      console.log('[Privacy Vision Agent] Backend not connected, skipping reasoning');
-      return;
-    }
-
-    const tab = await getActiveTab();
-    if (!tab || !tab.id) {
-      console.error('[Privacy Vision Agent] No active tab found');
-      return;
-    }
-
-    // Scan current DOM
-    const scanResult = await chrome.tabs.sendMessage(tab.id, { action: 'scanDOM' });
-
-    if (!scanResult?.success) {
-      console.error('[Privacy Vision Agent] DOM scan failed');
-      return;
-    }
-
-    console.log('[Privacy Vision Agent] Sending DOM context to backend for reasoning');
-
-    // Send context to backend
-    await wsClient.send('context', {
-      context: {
-        url: tab.url || '',
-        title: tab.title || '',
-        elements: scanResult.data?.elements || [],
-        page: scanResult.data?.page || {},
-      },
-      task: task,
-    });
-
-    console.log('[Privacy Vision Agent] Context sent to backend');
-  } catch (error) {
-    console.error('[Privacy Vision Agent] Failed to send context:', error);
   }
 }
 
@@ -278,6 +329,8 @@ chrome.runtime.onMessage.addListener((request, _sender, _sendResponse) => {
  * Handles messages from popup
  */
 chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
+  sessionManager?.recordActivity();
+
   if (request.action === 'getStatus') {
     sendResponse(extensionState);
   } else if (request.action === 'scanCurrentTab') {
@@ -292,26 +345,28 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
       provider: backendProvider,
       model: backendModel,
     });
-  } else if (request.action === 'sendContextForReasoning') {
-    sendContextForReasoning(request.task).then(() => {
-      sendResponse({ success: true });
-    }).catch((error) => {
-      sendResponse({ success: false, error: String(error) });
-    });
-    return true; // Keep channel open for async response
   } else if (request.action === 'sendSanitizedContext') {
     handleSendSanitizedContext(request).then(sendResponse);
     return true; // Keep channel open for async response
   } else if (request.action === 'stopAgent') {
     if (!killSwitch.isActive()) {
-      killSwitch.activate('user stop from side panel');
+      killSwitch.activate(EXPLICIT_STOP_REASON);
     }
+    confirmationGate.rejectAll();
     emitAgentEvent('stopped', { reason: 'user stop' });
+    // Tear down the idle-timeout tracker so it doesn't keep ticking toward a
+    // pointless timeout in the background — a fresh one is created lazily
+    // from the next real activity (see ensureSessionManager).
+    sessionManager?.terminate(EXPLICIT_STOP_REASON);
+    sessionManager = null;
     sendResponse({ ok: true });
   } else if (request.action === 'resumeAgent') {
     if (killSwitch.isActive()) {
       killSwitch.deactivate();
     }
+    sendResponse({ ok: true });
+  } else if (request.action === 'confirmCloudAction') {
+    confirmationGate.resolve(String(request.id), Boolean(request.approved));
     sendResponse({ ok: true });
   }
 });
