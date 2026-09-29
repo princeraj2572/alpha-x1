@@ -37,16 +37,25 @@ You must respond with a JSON action following this schema:
 {
   "action_type": "click|type|scroll|select|navigate|wait|finish",
   "target_id": "element_id or null",
-  "value": "for type/select actions",
+  "value": "text for type actions, or null",
+  "option": "dropdown value for select actions, or null",
+  "direction": "up|down|left|right for scroll actions, or null",
+  "amount": 300,
+  "duration_ms": 1000,
+  "url": "https://example.com for navigate actions, or null",
   "reason": "explanation of why this action",
   "confidence": 0.0-1.0
 }
 
 Rules:
 - Only suggest actions that are visible and interactable
-- For type actions, provide clear text values
-- For navigate, only suggest same-domain navigation
-- For scroll, specify direction (up/down/left/right)
+- For click: must have target_id
+- For type: must have target_id and value
+- For select: must have target_id and option
+- For scroll: must have direction (up/down/left/right) and amount
+- For navigate: must have a valid http/https url, same-domain only
+- For wait: must have duration_ms (100-10000ms)
+- Set unused fields to null
 - Confidence should reflect how certain you are
 - If task is complete, action_type should be "finish"
 
@@ -163,6 +172,11 @@ What action should be taken next?"""
                 action_type=action_data.get("action_type", "wait"),
                 target_id=action_data.get("target_id"),
                 value=action_data.get("value"),
+                option=action_data.get("option"),
+                direction=action_data.get("direction"),
+                amount=action_data.get("amount"),
+                duration_ms=action_data.get("duration_ms"),
+                url=action_data.get("url"),
                 confidence=float(action_data.get("confidence", 0.5)),
                 reason=action_data.get("reason", "No reason provided"),
             )
