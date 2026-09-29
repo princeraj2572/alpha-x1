@@ -36,10 +36,21 @@ export class WebSocketClient {
     lastHeartbeat: Date.now(),
   };
 
-  private messageHandlers: Map<string, (msg: Message) => void> = new Map();
+  // Keyed by message type ('*' for the wildcard). A plain Map<string, handler>
+  // meant a second onMessage(sameType, ...) call silently overwrote the
+  // first — e.g. the background worker registers two 'heartbeat' handlers
+  // (one to auto-ACK, one to track provider/model), and only the last one
+  // survived, so heartbeats stopped being ACKed. Arrays let every
+  // registered handler for a type actually run.
+  private messageHandlers: Map<string, ((msg: Message) => void)[]> = new Map();
   private errorHandlers: ((error: Error) => void)[] = [];
   private connectHandlers: (() => void)[] = [];
   private disconnectHandlers: (() => void)[] = [];
+  // Set by disconnect() so the close event it triggers doesn't schedule a
+  // reconnect. Without this, calling disconnect() closed the socket but
+  // scheduleReconnect() (unconditionally called from onclose) would still
+  // fire, reconnecting a client that asked to be shut down.
+  private intentionalDisconnect = false;
 
   constructor(url: string = 'ws://localhost:8000/ws') {
     this.url = url;
@@ -55,6 +66,7 @@ export class WebSocketClient {
         console.log('[WebSocket Client] Connecting to', this.url);
 
         this.ws = new WebSocket(this.url);
+        this.intentionalDisconnect = false;
 
         this.ws.onopen = () => {
           console.log('[WebSocket Client] Connected');
@@ -92,8 +104,10 @@ export class WebSocketClient {
           // Notify listeners
           this.disconnectHandlers.forEach((h) => h());
 
-          // Attempt reconnect
-          this.scheduleReconnect();
+          // Attempt reconnect, unless this close was requested via disconnect()
+          if (!this.intentionalDisconnect) {
+            this.scheduleReconnect();
+          }
         };
       } catch (error) {
         reject(error);
@@ -105,6 +119,7 @@ export class WebSocketClient {
    * Disconnect from backend
    */
   disconnect(): void {
+    this.intentionalDisconnect = true;
     if (this.ws) {
       this.ws.close();
       this.ws = null;
@@ -161,10 +176,24 @@ export class WebSocketClient {
    * Register message handler - can pass (type, handler) or just (handler)
    */
   onMessage(typeOrHandler: string | ((msg: Message) => void), maybeHandler?: (msg: Message) => void): void {
+    let key: string;
+    let handler: (msg: Message) => void;
+
     if (typeof typeOrHandler === 'string' && maybeHandler) {
-      this.messageHandlers.set(typeOrHandler, maybeHandler);
+      key = typeOrHandler;
+      handler = maybeHandler;
     } else if (typeof typeOrHandler === 'function') {
-      this.messageHandlers.set('*', typeOrHandler);
+      key = '*';
+      handler = typeOrHandler;
+    } else {
+      return;
+    }
+
+    const existing = this.messageHandlers.get(key);
+    if (existing) {
+      existing.push(handler);
+    } else {
+      this.messageHandlers.set(key, [handler]);
     }
   }
 
@@ -223,15 +252,15 @@ export class WebSocketClient {
     this.state.messagesPending = Math.max(0, this.state.messagesPending - 1);
 
     // Call type-specific handlers
-    const typeHandler = this.messageHandlers.get(message.type);
-    if (typeHandler) {
-      typeHandler(message);
+    const typeHandlers = this.messageHandlers.get(message.type);
+    if (typeHandlers) {
+      typeHandlers.forEach((h) => h(message));
     }
 
-    // Call wildcard handler
-    const wildcardHandler = this.messageHandlers.get('*');
-    if (wildcardHandler) {
-      wildcardHandler(message);
+    // Call wildcard handlers
+    const wildcardHandlers = this.messageHandlers.get('*');
+    if (wildcardHandlers) {
+      wildcardHandlers.forEach((h) => h(message));
     }
 
     console.log('[WebSocket Client] Received:', message.type);
