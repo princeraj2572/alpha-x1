@@ -4,7 +4,11 @@ A privacy-preserving browser agent: a lightweight on-device vision/DOM pipeline 
 
 **SEE LOCALLY → PROTECT LOCALLY → REASON IN CLOUD → VALIDATE LOCALLY → ACT LOCALLY**
 
-## Screenshot
+## Screenshots
+
+The extension popup — current page info, DOM analysis, screenshot capture, and backend/session status:
+
+![Extension popup](docs/assets/extension-popup-screenshot.png)
 
 The bundled demo site, used for local development and privacy evaluation:
 
