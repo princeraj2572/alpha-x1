@@ -38,9 +38,16 @@ class SessionData:
         """Session age in seconds"""
         return (datetime.now(timezone.utc) - self.created_at).total_seconds()
 
-    @property
     def is_stale(self, timeout_seconds: int = 300) -> bool:
-        """Check if session has no recent heartbeat (5 min default)"""
+        """Check if session has no recent heartbeat (5 min default).
+
+        Was previously declared as a @property, which meant `timeout_seconds`
+        could never actually be passed in — Python evaluates a property with
+        no arguments, so `session.is_stale(60)` would raise `TypeError: 'bool'
+        object is not callable` rather than using a 60s threshold. Nothing
+        called it with an explicit argument (or at all) so it never surfaced,
+        but the API was unusable as written.
+        """
         return (datetime.now(timezone.utc) - self.last_heartbeat).total_seconds() > timeout_seconds
 
 
